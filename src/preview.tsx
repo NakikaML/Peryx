@@ -1153,6 +1153,61 @@ function TabsPreview() {
   return <App />;
 }
 
+/** 分屏测试页 */
+function SplitPreview() {
+  seedCalloutStore("live", "__SPLIT_MOCK__");
+  if (!(window as unknown as Record<string, unknown>).__SPLIT_SEEDED__) {
+    const g = window as unknown as Record<string, unknown>;
+    g.__SPLIT_WRITES__ = [];
+    const store: Record<string, string> = {
+      "笔记A.md": "# 笔记A\n\n这是 A 的内容。\n",
+      "笔记B.md": "# 笔记B\n\n这是 B 的内容。\n",
+    };
+    g.__TAURI_INTERNALS__ = {
+      invoke: async (cmd: string, args: Record<string, unknown>) => {
+        if (cmd === "load_settings") return null;
+        if (cmd === "get_vault") return null;
+        if (cmd === "get_recent_vaults") return [];
+        if (cmd === "read_note") return store[String(args?.relPath ?? "")] ?? "";
+        if (cmd === "write_note") {
+          const rel = String(args?.relPath ?? "");
+          store[rel] = String(args?.content ?? "");
+          (g.__SPLIT_WRITES__ as unknown[]).push({ path: rel, text: store[rel] });
+          return null;
+        }
+        if (cmd === "get_backlinks") return [];
+        if (cmd === "get_outlinks") return [];
+        if (cmd === "resolve_attachment") return null;
+        if (cmd === "read_image_data_url") return "";
+        throw new Error(`未 mock 的命令：${cmd}`);
+      },
+    };
+    const node = (title: string) => ({
+      name: `${title}.md`,
+      path: `${title}.md`,
+      isDir: false,
+      isImage: false,
+      modifiedMs: 0,
+      size: 10,
+    });
+    useStore.setState({
+      vault: { root: "D:\\Test", name: "Test" },
+      sidebarOpen: true,
+      mode: "live",
+      note: null,
+      tabs: [],
+      splitPath: null,
+      children: { "": [node("笔记A"), node("笔记B")] },
+      backlinks: [],
+      outlinks: [],
+      tags: [],
+    });
+    setLinkIndex([]);
+    g.__SPLIT_SEEDED__ = true;
+  }
+  return <App />;
+}
+
 function Preview() {
   const query = new URLSearchParams(location.search);
   const page = query.get("page");
@@ -1185,6 +1240,7 @@ function Preview() {
   if (page === "mermaid-live") return <MermaidLivePreview />;
   if (page === "outline") return <OutlinePreview />;
   if (page === "tabs") return <TabsPreview />;
+  if (page === "split") return <SplitPreview />;
 
   React.useEffect(() => {
     let cancelled = false;

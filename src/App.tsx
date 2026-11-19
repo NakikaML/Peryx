@@ -17,6 +17,7 @@ import { SettingsPanel } from "@/components/SettingsPanel";
 import { ImagePreview } from "@/components/ImagePreview";
 import { ReadingView } from "@/components/ReadingView";
 import { TabBar } from "@/components/TabBar";
+import { SplitPane } from "@/components/SplitPane";
 import { applySettings, defaultSettings, loadSettings, matchShortcut } from "@/lib/settings";
 import type { Settings } from "@/lib/settings";
 import { useStore } from "@/stores/app";
@@ -36,6 +37,8 @@ export default function App() {
   const selectedPath = useStore((s) => s.selectedPath);
   const selectedIsDir = useStore((s) => s.selectedIsDir);
   const imagePreview = useStore((s) => s.imagePreview);
+  const splitPath = useStore((s) => s.splitPath);
+  const closeSplit = useStore((s) => s.closeSplit);
   const noteContent = note?.content ?? "";
   const noteDirty = note?.dirty ?? false;
 
@@ -321,6 +324,10 @@ export default function App() {
               onClose={() => setRightOpen(false)}
             activeLine={scrollLine}
             />
+          )}
+
+          {splitPath && (
+            <SplitPane path={splitPath} onClose={() => closeSplit()} />
           )}
         </div>
 

@@ -30,6 +30,7 @@ export function Sidebar({ onCreateNote, onCreateFolder, onCollapse, onOpenSettin
   const toggleExpand = useStore((s) => s.toggleExpand);
   const openNote = useStore((s) => s.openNote);
   const showImage = useStore((s) => s.showImage);
+  const openInSplit = useStore((s) => s.openInSplit);
   const setSidebarOpen = useStore((s) => s.setSidebarOpen);
 
   const recentVaults = useStore((s) => s.recentVaults);
@@ -213,6 +214,7 @@ export function Sidebar({ onCreateNote, onCreateFolder, onCollapse, onOpenSettin
                 onToggle={toggleExpand}
                 onOpen={openNote}
                 onOpenImage={showImage}
+                onOpenSplit={openInSplit}
               />
             ))}
           </>
@@ -240,6 +242,8 @@ interface ItemProps {
   onOpen: (path: string) => void;
   /** 点击图片文件：在右侧预览 */
   onOpenImage: (path: string) => void;
+  /** 在分屏里打开这篇笔记 */
+  onOpenSplit: (path: string) => void;
 }
 
 /** 当前正在拖拽的条目（模块级，避免层层传参） */
@@ -257,7 +261,7 @@ function nameOf(path: string): string {
   return i < 0 ? path : path.slice(i + 1);
 }
 
-function TreeItem({ node, depth, childrenMap, expanded, selected, onToggle, onOpen, onOpenImage }: ItemProps) {
+function TreeItem({ node, depth, childrenMap, expanded, selected, onToggle, onOpen, onOpenImage, onOpenSplit }: ItemProps) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [drop, setDrop] = useState<{ after: boolean } | null>(null);
   const [sortMode, setSortMode] = useState<"name" | "manual">("name");
@@ -443,6 +447,11 @@ function TreeItem({ node, depth, childrenMap, expanded, selected, onToggle, onOp
               </>
             )}
             <button onClick={doRename}>✏️ 重命名</button>
+            {!node.isDir && (
+              <button onClick={() => { setMenu(null); onOpenSplit(node.path); }}>
+                ⬒ 在分屏打开
+              </button>
+            )}
             <button className="danger" onClick={doDelete}>🗑 删除</button>
           </div>
         </div>
@@ -466,6 +475,7 @@ function TreeItem({ node, depth, childrenMap, expanded, selected, onToggle, onOp
               onToggle={onToggle}
               onOpen={onOpen}
               onOpenImage={onOpenImage}
+              onOpenSplit={onOpenSplit}
             />
           ))}
         </div>

@@ -2193,6 +2193,55 @@ button.link-item:hover {
   color: var(--accent-ink);
 }
 
+/* ===== 分屏 ===== */
+
+.split-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border-strong);
+  background: var(--bg-editor);
+}
+
+.split-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  flex-shrink: 0;
+}
+
+.split-title {
+  flex: 1;
+  font-size: 12px;
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.split-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.split-actions .mode-btn {
+  padding: 2px 7px;
+  font-size: 11.5px;
+}
+
+.split-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 /* ---- 拖拽排序 ---- */
 
 .tree-item.dragging {

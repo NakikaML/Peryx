@@ -53,6 +53,12 @@ interface AppStore {
   note: OpenNote | null;
   /** 已打开的标签页（最近打开的在后） */
   tabs: NoteTab[];
+  /** 分屏里打开的笔记路径，null 表示未分屏 */
+  splitPath: string | null;
+  /** 在分屏里打开笔记 */
+  openInSplit: (path: string) => void;
+  /** 关闭分屏 */
+  closeSplit: () => void;
   /** 正在预览的图片（相对路径），null 表示未预览图片 */
   imagePreview: string | null;
   /** 打开图片预览（右侧编辑区显示图片） */
@@ -155,6 +161,7 @@ export const useStore = create<AppStore>((set, get) => ({
   selectedIsDir: false,
   note: null,
   tabs: [],
+  splitPath: null,
   imagePreview: null,
   mode: "live",
   sidebarOpen: true,
@@ -190,6 +197,7 @@ export const useStore = create<AppStore>((set, get) => ({
       expanded: {},
       note: null,
       tabs: [],
+      splitPath: null,
       imagePreview: null,
       selectedPath: null,
       selectedIsDir: false,
@@ -407,6 +415,23 @@ export const useStore = create<AppStore>((set, get) => ({
     } catch (e) {
       get().toast(errText(e), "error");
     }
+  },
+
+  openInSplit(path) {
+    if (!/\.md$/i.test(path)) {
+      get().toast(`「${path}」不是笔记文件`, "error");
+      return;
+    }
+    // 分屏里打开的就是当前笔记时不重复开
+    if (get().note?.path === path) {
+      set({ splitPath: path });
+      return;
+    }
+    set({ splitPath: path });
+  },
+
+  closeSplit() {
+    set({ splitPath: null });
   },
 
   showImage(path) {
