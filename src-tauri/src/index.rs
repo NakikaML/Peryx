@@ -187,10 +187,20 @@ fn is_tag_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_' || c == '-' || c == '/'
 }
 
+/// `#` 是否可以开始一个标签。
+///
+/// 规则：`#` 要么在行首，要么前一个字符**不是标签字符**。
+///
+/// 这样 `a#b`（词中）不算标签，而 `标签：#数学`、`（#数学）` 这类
+/// 中文标点后面的标签能正确识别——中文写作里冒号后直接跟标签非常常见。
+fn can_start_tag(chars: &[char], i: usize) -> bool {
+    i == 0 || !is_tag_char(chars[i - 1])
+}
+
 /// 提取 `#标签`。
 ///
 /// 规则（与 Obsidian 接近）：
-/// - `#` 必须在行首或空白之后（避免把 `a#b` 当标签）
+/// - `#` 必须在行首或非标签字符之后（避免把 `a#b` 当标签）
 /// - `#` 后不能是空白、不能是 `#`（那是标题）
 /// - 标签体至少一个字符，且不能全是数字（避免 `#123` 这种编号）
 pub fn parse_tags(masked: &str) -> Vec<String> {
@@ -205,14 +215,16 @@ pub fn parse_tags(masked: &str) -> Vec<String> {
                 i += 1;
                 continue;
             }
-            // `#` 前必须是行首或空白
-            let prev_ok = i == 0 || chars[i - 1].is_whitespace();
-            if !prev_ok {
+            if !can_start_tag(&chars, i) {
                 i += 1;
                 continue;
             }
-            // 收集标签体
             let start = i + 1;
+            // `#` 后面紧跟 `#`（标题）或空白 → 不是标签
+            if start < chars.len() && (chars[start] == '#' || chars[start].is_whitespace()) {
+                i += 1;
+                continue;
+            }
             let mut j = start;
             while j < chars.len() && is_tag_char(chars[j]) {
                 j += 1;
@@ -726,6 +738,49 @@ pub fn notes_with_tag(index: &NoteIndex, tag: &str) -> Vec<NoteMeta> {
     v
 }
 
+/// 在正文里把 `#旧标签` 替换为 `#新标签`。
+///
+/// 只替换「真正的标签位置」（`#` 在行首或空白之后、且标签体完全匹配），
+/// 代码块与行内代码里的内容不替换。
+pub fn replace_tag(text: &str, old: &str, new: &str) -> String {
+    let old_tag = old.trim().trim_start_matches('#');
+    let new_tag = new.trim().trim_start_matches('#');
+    if old_tag.is_empty() || new_tag.is_empty() || old_tag == new_tag {
+        return text.to_string();
+    }
+
+    let masked = mask_code(text);
+    let orig: Vec<char> = text.chars().collect();
+    let mask: Vec<char> = masked.chars().collect();
+    if orig.len() != mask.len() {
+        // 长度不一致时保守放弃（理论上不会发生：mask_code 保持字符数）
+        return text.to_string();
+    }
+
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0usize;
+    while i < orig.len() {
+        // 只在未被屏蔽的位置识别 #
+        if mask[i] == '#' && can_start_tag(&mask, i) {
+            let start = i + 1;
+            let mut j = start;
+            while j < mask.len() && is_tag_char(mask[j]) {
+                j += 1;
+            }
+            let found: String = orig[start..j].iter().collect();
+            if found.trim_matches('/') == old_tag {
+                out.push('#');
+                out.push_str(new_tag);
+                i = j;
+                continue;
+            }
+        }
+        out.push(orig[i]);
+        i += 1;
+    }
+    out
+}
+
 // ---------------------------------------------------------------------------
 // 测试
 // ---------------------------------------------------------------------------
@@ -779,6 +834,15 @@ mod tests {
     fn parse_tags_dedupes() {
         let t = parse_tags("#数学 和 #数学");
         assert_eq!(t, vec!["数学".to_string()]);
+    }
+
+    #[test]
+    fn parse_tags_after_cjk_punctuation() {
+        // 中文写作里冒号/括号后直接跟标签非常常见，应能识别
+        let t = parse_tags("标签：#数学 （#物理） 以及「#化学」");
+        assert!(t.contains(&"数学".to_string()), "{t:?}");
+        assert!(t.contains(&"物理".to_string()), "{t:?}");
+        assert!(t.contains(&"化学".to_string()), "{t:?}");
     }
 
     #[test]
@@ -944,6 +1008,42 @@ mod tests {
         assert_eq!(s.tags, 2);
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ---- 标签重命名 ----
+
+    #[test]
+    fn replace_tag_rewrites_only_real_tags() {
+        // 行首的 #数学 应替换；#数学/子项 是不同标签；a#数学 的 # 前不是空白
+        let text = "#数学 和 #数学/子项 以及 a#数学";
+        let out = replace_tag(text, "数学", "数学分析");
+        assert!(out.starts_with("#数学分析"), "行首标签应替换: {out}");
+        assert!(out.contains("#数学/子项"), "子标签不应被替换: {out}");
+        assert!(out.contains("a#数学"), "词中 # 不应被替换: {out}");
+    }
+
+    #[test]
+    fn replace_tag_skips_code() {
+        let text = "正文 #数学\n\n```\n#数学\n```\n\n行内 `#数学` 不算";
+        let out = replace_tag(text, "数学", "物理");
+        assert!(out.starts_with("正文 #物理"), "正文应被替换: {out}");
+        assert!(out.contains("```\n#数学\n```"), "代码块不应被替换: {out}");
+        assert!(out.contains("`#数学`"), "行内代码不应被替换: {out}");
+    }
+
+    #[test]
+    fn replace_tag_no_change_when_absent() {
+        let text = "没有标签的正文";
+        assert_eq!(replace_tag(text, "数学", "物理"), text);
+        // 新旧相同也原样返回
+        assert_eq!(replace_tag("#数学", "数学", "数学"), "#数学");
+    }
+
+    #[test]
+    fn replace_tag_keeps_rest_of_line_intact() {
+        let text = "前面 #数学 后面 [[链接]] #数学";
+        let out = replace_tag(text, "数学", "代数");
+        assert_eq!(out, "前面 #代数 后面 [[链接]] #代数");
     }
 
     #[test]

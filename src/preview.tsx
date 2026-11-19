@@ -410,6 +410,99 @@ function GSearchPreview() {
   );
 }
 
+/** 编辑器里的 #标签 渲染测试页 */
+function TagsPreview() {
+  const ref = React.useRef<EditorHandle | null>(null);
+  if (!(window as unknown as Record<string, unknown>).__TAG_MOCK__) {
+    registerWikiActions({
+      open: () => {},
+      create: () => {},
+      filterTag: (tag) => {
+        (window as unknown as Record<string, unknown>).__FILTERED__ = tag;
+      },
+    });
+    (window as unknown as Record<string, unknown>).__TAG_MOCK__ = true;
+  }
+
+  const sample = [
+    "# 标签测试",
+    "",
+    "正文里的标签：#数学 和 #计算机/算法 ，还有 #Python。",
+    "",
+    "词中的不算：a#数学",
+    "",
+    "纯数字不算：#123",
+    "",
+    "行内代码里不算：`#数学`",
+    "",
+    "```c",
+    "#include <stdio.h>",
+    "```",
+    "",
+  ].join("\n");
+
+  return (
+    <div style={{ height: "100vh" }}>
+      <MarkdownEditor
+        ref={(h) => {
+          (window as unknown as Record<string, unknown>).__EDITOR_HANDLE__ = h;
+          ref.current = h;
+        }}
+        docPath="tags-test.md"
+        value={sample}
+        mode="live"
+        showLineNumbers={false}
+        onChange={() => {}}
+        onSave={() => {}}
+      />
+    </div>
+  );
+}
+
+/** 侧边栏标签视图测试页 */
+function TagViewPreview() {
+  if (!(window as unknown as Record<string, unknown>).__TAGVIEW_MOCK__) {
+    useStore.setState({
+      vault: { root: "D:\\Test", name: "Test" },
+      tags: [
+        { tag: "数学", count: 2 },
+        { tag: "计算机/算法", count: 1 },
+        { tag: "Python", count: 1 },
+      ],
+      filterByTag: async (tag) => {
+        if (!tag) {
+          useStore.setState({ tagFilter: null, taggedNotes: [] });
+          return;
+        }
+        useStore.setState({
+          tagFilter: tag,
+          taggedNotes: [
+            { path: "微积分基础.md", title: "微积分基础", tags: [], links: [], mtimeMs: 0, size: 0 },
+            { path: "线性代数.md", title: "线性代数", tags: [], links: [], mtimeMs: 0, size: 0 },
+          ],
+        });
+      },
+    });
+    (window as unknown as Record<string, unknown>).__TAGVIEW_MOCK__ = true;
+  }
+
+  return (
+    <div className="app" style={{ height: "100vh" }}>
+      <Sidebar onCreateNote={() => {}} onCreateFolder={() => {}} onCollapse={() => {}} />
+      <main className="main">
+        <div className="workspace">
+          <div className="editor-wrap">
+            <div className="empty-state">
+              <div className="empty-icon">🏷️</div>
+              <p>标签视图预览（点侧边栏「标签」）</p>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
 function Preview() {
   const query = new URLSearchParams(location.search);
   const page = query.get("page");
@@ -425,6 +518,8 @@ function Preview() {
   if (page === "links") return <LinksPanelPreview />;
   if (page === "palette") return <PalettePreview />;
   if (page === "gsearch") return <GSearchPreview />;
+  if (page === "tags") return <TagsPreview />;
+  if (page === "tagview") return <TagViewPreview />;
 
   React.useEffect(() => {
     let cancelled = false;

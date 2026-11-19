@@ -98,3 +98,55 @@ pub fn get_outlinks(rel_path: String, state: State<'_, AppState>) -> CmdResult<V
         i.get(&rel_path).map(|e| e.meta.links.clone()).unwrap_or_default()
     })
 }
+
+/// 重命名标签：把所有笔记里的 `#旧标签` 改成 `#新标签`。
+///
+/// 返回被修改的文件数。代码块与行内代码里的内容不会被改。
+#[tauri::command]
+pub fn rename_tag(
+    old_tag: String,
+    new_tag: String,
+    state: State<'_, AppState>,
+) -> CmdResult<usize> {
+    let root = {
+        let guard = state.vault.lock().map_err(|e| e.to_string())?;
+        guard.clone().ok_or_else(|| "尚未打开笔记库".to_string())?
+    };
+    let new_clean = new_tag.trim().trim_start_matches('#').to_string();
+    let old_clean = old_tag.trim().trim_start_matches('#').to_string();
+    if new_clean.is_empty() {
+        return Err("新标签不能为空".into());
+    }
+    if old_clean.is_empty() {
+        return Err("旧标签不能为空".into());
+    }
+    if old_clean == new_clean {
+        return Ok(0);
+    }
+
+    // 先取出需要处理的文件列表（避免长时间持锁）
+    let targets: Vec<String> = {
+        let guard = state.index.read().map_err(|e| e.to_string())?;
+        index::notes_with_tag(&guard, &old_clean)
+            .into_iter()
+            .map(|m| m.path)
+            .collect()
+    };
+
+    let mut changed = 0usize;
+    for rel in targets {
+        let full = root.join(rel.replace('/', std::path::MAIN_SEPARATOR_STR));
+        let Ok(bytes) = std::fs::read(&full) else { continue };
+        let Some(text) = crate::commands::decode_text_public(&bytes) else { continue };
+        let updated = index::replace_tag(&text, &old_clean, &new_clean);
+        if updated != text {
+            if std::fs::write(&full, updated.as_bytes()).is_ok() {
+                changed += 1;
+            }
+        }
+    }
+
+    // 内容变了，索引需要重建
+    crate::commands::rebuild_index_inner(&root, &state);
+    Ok(changed)
+}

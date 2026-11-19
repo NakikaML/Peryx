@@ -106,6 +106,10 @@ export const api = {
 
   /** 某篇笔记的出链 */
   getOutlinks: (relPath: string) => invoke<LinkRef[]>("get_outlinks", { relPath }),
+
+  /** 重命名标签（批量替换所有笔记），返回修改的文件数 */
+  renameTag: (oldTag: string, newTag: string) =>
+    invoke<number>("rename_tag", { oldTag, newTag }),
 };
 
 /** 把后端错误整理成可读文本 */

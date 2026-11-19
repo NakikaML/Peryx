@@ -5,6 +5,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useStore } from "@/stores/app";
 import { errText, isTauri } from "@/lib/api";
+import { TagView } from "@/components/TagView";
 import type { FileNode } from "@/lib/types";
 
 interface Props {
@@ -36,6 +37,8 @@ export function Sidebar({ onCreateNote, onCreateFolder, onCollapse }: Props) {
   const toast = useStore((s) => s.toast);
 
   const [menuOpen, setMenuOpen] = useState(false);
+  /** 侧边栏视图：文件树 / 标签 */
+  const [view, setView] = useState<"files" | "tags">("files");
 
   const rootChildren = children[""] ?? [];
 
@@ -170,26 +173,46 @@ export function Sidebar({ onCreateNote, onCreateFolder, onCollapse }: Props) {
       )}
 
       <div className="tree" onClick={() => setSidebarOpen(true)}>
-        {rootChildren.length === 0 && (
-          <div className="tree-empty">
-            这个笔记库还没有内容
-            <button className="link-btn" onClick={onCreateNote}>
-              新建第一篇笔记
-            </button>
-          </div>
+        <div className="sidebar-tabs">
+          <button
+            className={`sidebar-tab ${view === "files" ? "active" : ""}`}
+            onClick={() => setView("files")}
+          >
+            文件
+          </button>
+          <button
+            className={`sidebar-tab ${view === "tags" ? "active" : ""}`}
+            onClick={() => setView("tags")}
+          >
+            标签
+          </button>
+        </div>
+        {view === "tags" ? (
+          <TagView />
+        ) : (
+          <>
+            {rootChildren.length === 0 && (
+              <div className="tree-empty">
+                这个笔记库还没有内容
+                <button className="link-btn" onClick={onCreateNote}>
+                  新建第一篇笔记
+                </button>
+              </div>
+            )}
+            {rootChildren.map((node) => (
+              <TreeItem
+                key={node.path}
+                node={node}
+                depth={0}
+                childrenMap={children}
+                expanded={expanded}
+                selected={selected}
+                onToggle={toggleExpand}
+                onOpen={openNote}
+              />
+            ))}
+          </>
         )}
-        {rootChildren.map((node) => (
-          <TreeItem
-            key={node.path}
-            node={node}
-            depth={0}
-            childrenMap={children}
-            expanded={expanded}
-            selected={selected}
-            onToggle={toggleExpand}
-            onOpen={openNote}
-          />
-        ))}
       </div>
 
       <div className="sidebar-foot">

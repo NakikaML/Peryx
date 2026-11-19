@@ -59,6 +59,9 @@ export default function App() {
       open: (path) => {
         void useStore.getState().openNote(path);
       },
+      filterTag: (tag) => {
+        void useStore.getState().filterByTag(tag);
+      },
       create: (target) => {
         const st = useStore.getState();
         void (async () => {

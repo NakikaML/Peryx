@@ -10,7 +10,9 @@ import type {
   ExpandedMap,
   FileNode,
   LinkRef,
+  NoteMeta,
   OpenNote,
+  TagCount,
   VaultInfo,
 } from "@/lib/types";
 
@@ -86,6 +88,19 @@ interface AppStore {
   /** 加载当前笔记的反向链接与出链 */
   loadLinks: (path: string) => Promise<void>;
 
+  /** 全部标签与计数 */
+  tags: TagCount[];
+  /** 当前按标签筛选的标签（null = 未筛选） */
+  tagFilter: string | null;
+  /** 当前筛选出的笔记 */
+  taggedNotes: NoteMeta[];
+  /** 刷新标签列表 */
+  loadTags: () => Promise<void>;
+  /** 按标签筛选（传 null 清除） */
+  filterByTag: (tag: string | null) => Promise<void>;
+  /** 重命名标签（批量替换所有笔记） */
+  renameTag: (oldTag: string, newTag: string) => Promise<void>;
+
   openNote: (path: string) => Promise<void>;
   /** 在目录树中选中文件夹（不读取内容） */
   selectFolder: (dirPath: string) => void;
@@ -132,6 +147,9 @@ export const useStore = create<AppStore>((set, get) => ({
   toasts: [],
   backlinks: [],
   outlinks: [],
+  tags: [],
+  tagFilter: null,
+  taggedNotes: [],
 
   async loadVault() {
     try {
@@ -146,7 +164,7 @@ export const useStore = create<AppStore>((set, get) => ({
     // 无论是否恢复成功，都刷新一次最近列表（供切换菜单使用）
     await get().loadRecent();
     // 索引在 open_vault 时由后端构建，这里同步一份到前端缓存
-    if (get().vault) await refreshLinkIndex();
+    if (get().vault) { await refreshLinkIndex(); await get().loadTags(); }
     else clearLinkIndex();
   },
 
@@ -316,6 +334,61 @@ export const useStore = create<AppStore>((set, get) => ({
       set({ backlinks, outlinks });
     } catch {
       set({ backlinks: [], outlinks: [] });
+    }
+  },
+
+  async loadTags() {
+    try {
+      const tags = await api.getAllTags();
+      set({ tags });
+    } catch {
+      set({ tags: [] });
+    }
+  },
+
+  async filterByTag(tag) {
+    if (!tag) {
+      set({ tagFilter: null, taggedNotes: [] });
+      return;
+    }
+    try {
+      const notes = await api.getNotesWithTag(tag);
+      set({ tagFilter: tag, taggedNotes: notes });
+    } catch (e) {
+      get().toast(errText(e), "error");
+    }
+  },
+
+  async renameTag(oldTag, newTag) {
+    const from = oldTag.trim().replace(/^#/, "");
+    const to = newTag.trim().replace(/^#/, "");
+    if (!from || !to) {
+      get().toast("标签名不能为空", "error");
+      return;
+    }
+    if (from === to) return;
+    // 目标标签已存在时合并——这是允许的，但要提示
+    if (get().tags.some((t) => t.tag === to)) {
+      if (!window.confirm(`标签「${to}」已存在，重命名后会合并到它下面。继续？`)) return;
+    }
+    try {
+      const changed = await api.renameTag(from, to);
+      // 内容变了：刷新标签、链接缓存；如果开着这篇笔记要重读
+      await get().loadTags();
+      await refreshLinkIndex();
+      if (get().tagFilter === from) await get().filterByTag(to);
+      const cur = get().note;
+      if (cur) {
+        const content = await api.readNote(cur.path);
+        set({ note: { ...cur, content, dirty: false } });
+        void get().loadLinks(cur.path);
+      }
+      get().toast(
+        changed > 0 ? `已重命名标签，修改了 ${changed} 篇笔记` : "没有笔记使用这个标签",
+        "success",
+      );
+    } catch (e) {
+      get().toast(errText(e), "error");
     }
   },
 

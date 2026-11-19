@@ -83,6 +83,7 @@ pub fn run() {
             index_cmd::resolve_link,
             index_cmd::list_all_notes,
             index_cmd::get_outlinks,
+            index_cmd::rename_tag,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

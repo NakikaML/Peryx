@@ -482,6 +482,8 @@ const linkTextDeco = Decoration.mark({ class: "cm-link-text" });
 const mathDeco = Decoration.mark({ class: "cm-math-text" });
 /** 双链源码（光标在本行时显示 `[[目标]]` 原文） */
 const wikiSourceDeco = Decoration.mark({ class: "cm-wikilink-source" });
+/** `#标签` 样式 */
+const tagDeco = Decoration.mark({ class: "cm-tag" });
 const doneContentDeco = Decoration.mark({ class: "cm-task-done-content" });
 
 interface Pending {
@@ -888,6 +890,53 @@ function buildDecorations(state: EditorState): DecorationSet {
     }
   }
 
+  // ---- 4.6 #标签 ----
+  // 只做样式标记（不替换文本），保持可编辑。
+  // 跳过代码行与行内代码；`#` 前必须是行首或空白。
+  for (let n = 1; n <= doc.lines; n++) {
+    if (inFenceLines.has(n)) continue;
+    const line = doc.line(n);
+    const text = line.text;
+    let inCode = false;
+    let k = 0;
+    while (k < text.length) {
+      const c = text[k];
+      if (c === "`") {
+        inCode = !inCode;
+        k++;
+        continue;
+      }
+      if (inCode || c !== "#") {
+        k++;
+        continue;
+      }
+      // `#` 前必须是行首或「非标签字符」（中文标点后面也允许，如 `：#数学`）
+      const prevOk = k === 0 || !/[\p{L}\p{N}_/-]/u.test(text[k - 1]);
+      if (!prevOk) {
+        k++;
+        continue;
+      }
+      // `#` 后紧跟 `#`（标题）或空白 → 不是标签
+      if (k + 1 < text.length && (text[k + 1] === "#" || /\s/.test(text[k + 1]))) {
+        k++;
+        continue;
+      }
+      let j = k + 1;
+      while (j < text.length && /[\p{L}\p{N}_/-]/u.test(text[j])) j++;
+      if (j === k + 1) {
+        k++;
+        continue;
+      }
+      const body = text.slice(k + 1, j).replace(/^\/+|\/+$/g, "");
+      if (!body || /^\d+$/.test(body)) {
+        k = j;
+        continue;
+      }
+      mark(line.from + k, line.from + j, tagDeco);
+      k = j;
+    }
+  }
+
   // ---- 5. 行内公式 $...$ ----
   for (let n = 1; n <= doc.lines; n++) {
     const line = doc.line(n);
@@ -959,6 +1008,8 @@ interface WikiActions {
   open: (path: string) => void;
   /** 目标不存在时新建并打开 */
   create: (target: string) => void;
+  /** 点击 `#标签`：按标签筛选 */
+  filterTag?: (tag: string) => void;
 }
 
 let wikiActions: WikiActions | null = null;
@@ -978,6 +1029,18 @@ export function registerWikiActions(actions: WikiActions) {
 const wikiLinkHandler = EditorView.domEventHandlers({
   mousedown(event, view) {
     const target = event.target as HTMLElement | null;
+
+    // 点击 #标签 → 按标签筛选（不需要 Ctrl）
+    const tagEl = target?.closest?.(".cm-tag") as HTMLElement | null;
+    if (tagEl) {
+      const raw = (tagEl.textContent ?? "").replace(/^#/, "").trim();
+      if (raw && wikiActions?.filterTag) {
+        event.preventDefault();
+        wikiActions.filterTag(raw);
+        return true;
+      }
+    }
+
     const el = target?.closest?.(".cm-wikilink") as HTMLElement | null;
     if (!el) return false;
 
