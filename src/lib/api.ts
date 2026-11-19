@@ -110,6 +110,16 @@ export const api = {
   /** 重命名标签（批量替换所有笔记），返回修改的文件数 */
   renameTag: (oldTag: string, newTag: string) =>
     invoke<number>("rename_tag", { oldTag, newTag }),
+
+  /** 读取笔记库内的图片，返回 data URL（用于 ![[图片]] 内嵌显示） */
+  readImageDataUrl: (relPath: string) => invoke<string>("read_image_data_url", { relPath }),
+
+  /** 读取用户设置（没有则返回 null） */
+  loadSettings: () => invoke<Record<string, unknown> | null>("load_settings"),
+
+  /** 保存用户设置 */
+  saveSettings: (settings: Record<string, unknown>) =>
+    invoke<void>("save_settings", { settings }),
 };
 
 /** 把后端错误整理成可读文本 */

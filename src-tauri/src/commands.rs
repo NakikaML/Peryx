@@ -31,6 +31,9 @@ pub struct AppConfig {
     pub last_vault: Option<String>,
     /// 最近打开过的笔记库列表（最新在前，最多 8 个）
     pub recent_vaults: Vec<String>,
+    /// 用户设置（字体、样式、快捷键），原样存 JSON，结构由前端定义
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settings: Option<serde_json::Value>,
 }
 
 const MAX_RECENT: usize = 8;
@@ -69,6 +72,23 @@ impl AppPaths {
         cfg.last_vault = None;
         self.save(&cfg)
     }
+}
+
+/// 读取用户设置（没有则返回 null，前端用默认值）
+#[tauri::command]
+pub fn load_settings(paths: State<'_, AppPaths>) -> CmdResult<Option<serde_json::Value>> {
+    Ok(paths.load().settings)
+}
+
+/// 保存用户设置（只更新 settings 字段，不动最近列表）
+#[tauri::command]
+pub fn save_settings(
+    settings: serde_json::Value,
+    paths: State<'_, AppPaths>,
+) -> CmdResult<()> {
+    let mut cfg = paths.load();
+    cfg.settings = Some(settings);
+    paths.save(&cfg)
 }
 
 /// 比较两个路径字符串是否指向同一位置（忽略大小写与末尾分隔符）。
@@ -798,6 +818,80 @@ pub fn reveal_vault(state: State<'_, AppState>) -> CmdResult<String> {
     Ok(root.to_string_lossy().to_string())
 }
 
+/// 图片类扩展名白名单（防止把任意文件当图片读进内存）
+const IMAGE_EXTS: [&str; 9] = [
+    "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "avif", "ico",
+];
+
+/// 单张图片的大小上限：32 MB。
+/// 超过这个尺寸的图片转成 data URL 会明显拖慢渲染，因此直接拒绝并提示。
+const MAX_IMAGE_BYTES: u64 = 32 * 1024 * 1024;
+
+/// 读取笔记库内的图片，返回 `data:` URL，供 `![[图片.png]]` 内嵌显示。
+///
+/// 用 data URL 而不是 asset 协议的原因：
+/// 1. 不需要在 tauri.conf.json 里开 assetProtocol 与配置 scope；
+/// 2. 浏览器预览页 / 测试脚本里也能正常工作；
+/// 3. 前端可以按路径缓存，避免重复读取。
+///
+/// 路径安全：仍然走 `resolve_in_vault`，不能越出笔记库。
+#[tauri::command]
+pub fn read_image_data_url(rel_path: String, state: State<'_, AppState>) -> CmdResult<String> {
+    let root = get_root(&state)?;
+    let p = resolve_in_vault(&root, &rel_path)?;
+    if !p.is_file() {
+        return Err(format!("图片不存在：{rel_path}"));
+    }
+    let ext = p
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    if !IMAGE_EXTS.contains(&ext.as_str()) {
+        return Err(format!("不是支持的图片格式：{ext}"));
+    }
+    let meta = fs::metadata(&p).map_err(|e| format!("读取失败：{e}"))?;
+    if meta.len() > MAX_IMAGE_BYTES {
+        return Err(format!(
+            "图片过大（{} MB），上限 {} MB：{rel_path}",
+            meta.len() / 1024 / 1024,
+            MAX_IMAGE_BYTES / 1024 / 1024
+        ));
+    }
+    let bytes = fs::read(&p).map_err(|e| format!("读取失败：{e}"))?;
+    let mime = match ext.as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        "svg" => "image/svg+xml",
+        "ico" => "image/x-icon",
+        other => return Ok(format!("data:image/{other};base64,{}", base64_encode(&bytes))),
+    };
+    Ok(format!("data:{mime};base64,{}", base64_encode(&bytes)))
+}
+
+/// 极简 Base64 编码（避免为一张图片引入额外依赖）。
+fn base64_encode(input: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
+    for chunk in input.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
+        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(TABLE[(n >> 18) as usize & 63] as char);
+        out.push(TABLE[(n >> 12) as usize & 63] as char);
+        out.push(if chunk.len() > 1 {
+            TABLE[(n >> 6) as usize & 63] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            TABLE[n as usize & 63] as char
+        } else {
+            '='
+        });
+    }
+    out
+}
+
 // ---------------------------------------------------------------------------
 // 单元测试：重点覆盖路径越界防护（这是数据安全的关键）
 // ---------------------------------------------------------------------------
@@ -1004,11 +1098,59 @@ mod tests {
         let _ = fs::remove_dir_all(paths.config_file.parent().unwrap());
     }
 
+    // ---- 用户设置持久化 ----
+
+    #[test]
+    fn settings_roundtrip_and_preserve_vaults() {
+        let paths = tmp_paths("settings");
+        let vault = std::env::temp_dir().join("peryx_cfg_vault_s");
+        fs::create_dir_all(&vault).unwrap();
+        let canon = fs::canonicalize(&vault).unwrap();
+        // 先记一个笔记库
+        paths.remember(&canon).unwrap();
+
+        // 存设置
+        let settings = serde_json::json!({
+            "fontSize": 18,
+            "lineHeight": 1.8,
+            "styles": { "h1": { "color": "#123456", "scale": 1.2 } },
+            "shortcuts": { "sidebar": "Alt+2" }
+        });
+        {
+            let mut cfg = paths.load();
+            cfg.settings = Some(settings.clone());
+            paths.save(&cfg).unwrap();
+        }
+
+        // 设置能读回
+        let cfg = paths.load();
+        assert_eq!(cfg.settings.as_ref().unwrap()["fontSize"], serde_json::json!(18));
+        assert_eq!(
+            cfg.settings.as_ref().unwrap()["styles"]["h1"]["color"],
+            serde_json::json!("#123456")
+        );
+        // 且没有破坏最近笔记库
+        assert_eq!(cfg.recent_vaults.len(), 1, "保存设置不应影响最近列表");
+        assert!(cfg.last_vault.is_some(), "保存设置不应清空 last_vault");
+
+        let _ = fs::remove_dir_all(&vault);
+        let _ = fs::remove_dir_all(paths.config_file.parent().unwrap());
+    }
+
+    #[test]
+    fn settings_absent_returns_none() {
+        let paths = tmp_paths("nosettings");
+        let cfg = paths.load();
+        assert!(cfg.settings.is_none());
+        let _ = fs::remove_dir_all(paths.config_file.parent().unwrap());
+    }
+
     #[test]
     fn config_serializes_to_camel_case() {
         let cfg = AppConfig {
             last_vault: Some("D:\\v".into()),
             recent_vaults: vec!["D:\\v".into()],
+            settings: None,
         };
         let json = serde_json::to_value(&cfg).unwrap();
         assert!(json.get("lastVault").is_some(), "必须是 lastVault");
@@ -1020,6 +1162,29 @@ mod tests {
     fn same_path_ignores_case_and_separators() {
         assert!(same_path("D:\\Notes\\A", "d:/notes/a/"));
         assert!(!same_path("D:\\Notes\\A", "D:\\Notes\\B"));
+    }
+
+    // ---- Base64（图片内嵌用）----
+
+    #[test]
+    fn base64_encodes_known_vectors() {
+        // RFC 4648 标准测试向量
+        assert_eq!(base64_encode(b""), "");
+        assert_eq!(base64_encode(b"f"), "Zg==");
+        assert_eq!(base64_encode(b"fo"), "Zm8=");
+        assert_eq!(base64_encode(b"foo"), "Zm9v");
+        assert_eq!(base64_encode(b"foob"), "Zm9vYg==");
+        assert_eq!(base64_encode(b"fooba"), "Zm9vYmE=");
+        assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
+    }
+
+    #[test]
+    fn base64_handles_all_byte_values() {
+        // 0..=255 全字节，验证高位不会出错
+        let bytes: Vec<u8> = (0u16..256).map(|b| b as u8).collect();
+        let encoded = base64_encode(&bytes);
+        assert_eq!(encoded.len(), 344, "256 字节应编码为 344 个字符");
+        assert!(encoded.chars().all(|c| c.is_ascii_alphanumeric() || "+/=".contains(c)));
     }
 
     // ---- 自然排序 ----

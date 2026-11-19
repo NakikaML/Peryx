@@ -35,7 +35,8 @@ import { tags as t } from "@lezer/highlight";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 
-import { livePreview, setLivePreview, livePreviewEnabled } from "./livePreview";
+import { livePreview, setLivePreview, livePreviewEnabled, setLivePreviewDocPath, refreshDecorations } from "./livePreview";
+import { onImageLoaded } from "@/lib/imageCache";
 import { wikiCompletion } from "./wikiComplete";
 import { linkClickHandler, linkCursorHandler } from "./linkHandler";
 import { peryxTheme } from "./theme";
@@ -182,6 +183,8 @@ export const MarkdownEditor = forwardRef<EditorHandle, Props>(function MarkdownE
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
+    // 双链/图片 widget 需要知道当前笔记路径（解析 `![[图片.png]]`）
+    setLivePreviewDocPath(docPath);
     const current = view.state.doc.toString();
     if (current !== value) {
       view.dispatch({
@@ -191,6 +194,15 @@ export const MarkdownEditor = forwardRef<EditorHandle, Props>(function MarkdownE
       });
     }
   }, [docPath]);
+
+  // 图片是异步读进来的：加载完成后强制重算装饰，把占位替换成真图
+  useEffect(() => {
+    return onImageLoaded(() => {
+      const view = viewRef.current;
+      if (!view) return;
+      view.dispatch({ effects: refreshDecorations.of(null) });
+    });
+  }, []);
 
   // 外部内容变化（如切换文件时 store 已更新）
   useEffect(() => {

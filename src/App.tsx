@@ -9,10 +9,13 @@ import { Sidebar } from "@/components/Sidebar";
 import { Welcome } from "@/components/Welcome";
 import { StatusBar } from "@/components/StatusBar";
 import { Toasts } from "@/components/Toasts";
-import { Outline } from "@/components/Outline";
-import { LinksPanel } from "@/components/LinksPanel";
+import { RightSidebar } from "@/components/RightSidebar";
+
 import { CommandPalette } from "@/components/CommandPalette";
 import { ContentSearch } from "@/components/ContentSearch";
+import { SettingsPanel } from "@/components/SettingsPanel";
+import { applySettings, defaultSettings, loadSettings, matchShortcut } from "@/lib/settings";
+import type { Settings } from "@/lib/settings";
 import { useStore } from "@/stores/app";
 import { registerWikiActions } from "@/editor/livePreview";
 import { refreshLinkIndex } from "@/lib/linkCache";
@@ -35,18 +38,28 @@ export default function App() {
   const setContent = useStore((s) => s.setContent);
   const save = useStore((s) => s.save);
   const loadVault = useStore((s) => s.loadVault);
-  const refresh = useStore((s) => s.refresh);
   const createNote = useStore((s) => s.createNote);
   const createFolder = useStore((s) => s.createFolder);
 
   const editorRef = useRef<EditorHandle | null>(null);
   const [cursor, setCursor] = useState<{ line: number; col: number } | null>(null);
   const [saving, setSaving] = useState(false);
-  const [showOutline, setShowOutline] = useState(true);
-  const [showLinks, setShowLinks] = useState(true);
-  /** 覆盖层：命令面板 / 全局搜索 */
-  const [overlay, setOverlay] = useState<"palette" | "search" | null>(null);
+  /** 右侧边栏（大纲 / 反向链接 / 出链）是否展开 */
+  const [rightOpen, setRightOpen] = useState(true);
+  /** 覆盖层：命令面板 / 全局搜索 / 设置 */
+  const [overlay, setOverlay] = useState<"palette" | "search" | "settings" | null>(null);
   const [showLineNumbers, setShowLineNumbers] = useState(false);
+  /** 用户设置（字号 / 样式 / 快捷键） */
+  const [settings, setSettings] = useState<Settings>(defaultSettings);
+
+  // 启动时读取设置并立即应用
+  useEffect(() => {
+    void (async () => {
+      const s = await loadSettings();
+      setSettings(s);
+      applySettings(s);
+    })();
+  }, []);
 
   // 启动时恢复上次打开的笔记库
   useEffect(() => {
@@ -98,44 +111,66 @@ export default function App() {
 
   const getView = useCallback((): EditorView | null => editorRef.current?.view ?? null, []);
 
-  // 全局快捷键
+  // 全局快捷键：由设置驱动，可在设置面板里改
   useEffect(() => {
     const onKey = async (e: KeyboardEvent) => {
-      const mod = e.ctrlKey || e.metaKey;
-      if (!mod) return;
-      const k = e.key.toLowerCase();
-      if (k === "n" && !e.shiftKey) {
-        e.preventDefault();
-        const st = useStore.getState();
-        const dir = st.note ? st.note.path.split("/").slice(0, -1).join("/") : "";
-        await st.createNote(dir);
-      } else if (k === "n" && e.shiftKey) {
-        e.preventDefault();
-        const st = useStore.getState();
-        const dir = st.note ? st.note.path.split("/").slice(0, -1).join("/") : "";
-        await st.createFolder(dir);
-      } else if (k === "s") {
-        e.preventDefault();
-        await useStore.getState().save();
-      } else if (k === "p" && e.shiftKey) {
-        e.preventDefault();
-        setMode(useStore.getState().mode === "live" ? "source" : "live");
-      } else if (k === "p" && !e.shiftKey) {
-        // Ctrl+P：命令面板（按标题跳转）
-        e.preventDefault();
-        setOverlay((cur) => (cur === "palette" ? null : "palette"));
-      } else if (k === "f" && e.shiftKey) {
-        // Ctrl+Shift+F：全局全文搜索
-        e.preventDefault();
-        setOverlay((cur) => (cur === "search" ? null : "search"));
-      } else if (k === "o") {
-        e.preventDefault();
-        await refresh("");
+      const action = matchShortcut(e, settings.shortcuts);
+      if (!action) return;
+      const st = useStore.getState();
+
+      switch (action) {
+        case "sidebar":
+          e.preventDefault();
+          setSidebarOpen(!st.sidebarOpen);
+          break;
+        case "rightSidebar":
+          e.preventDefault();
+          setRightOpen((v) => !v);
+          break;
+        case "settings":
+          e.preventDefault();
+          setOverlay((cur) => (cur === "settings" ? null : "settings"));
+          break;
+        case "newNote": {
+          e.preventDefault();
+          const dir = st.note ? st.note.path.split("/").slice(0, -1).join("/") : "";
+          await st.createNote(dir);
+          break;
+        }
+        case "newFolder": {
+          e.preventDefault();
+          const dir = st.note ? st.note.path.split("/").slice(0, -1).join("/") : "";
+          await st.createFolder(dir);
+          break;
+        }
+        case "save":
+          e.preventDefault();
+          await st.save();
+          break;
+        case "toggleMode":
+          e.preventDefault();
+          setMode(useStore.getState().mode === "live" ? "source" : "live");
+          break;
+        case "commandPalette":
+          e.preventDefault();
+          setOverlay((cur) => (cur === "palette" ? null : "palette"));
+          break;
+        case "globalSearch":
+          e.preventDefault();
+          setOverlay((cur) => (cur === "search" ? null : "search"));
+          break;
+        case "refresh":
+          e.preventDefault();
+          await st.refresh("");
+          break;
+        default:
+          // bold / italic / inlineCode 由工具栏的编辑器级快捷键处理
+          break;
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [setMode, refresh]);
+  }, [settings.shortcuts, setMode, setSidebarOpen]);
 
   const handleCreateNote = async () => {
     const st = useStore.getState();
@@ -169,6 +204,7 @@ export default function App() {
           onCreateNote={handleCreateNote}
           onCreateFolder={handleCreateFolder}
           onCollapse={() => setSidebarOpen(false)}
+          onOpenSettings={() => setOverlay("settings")}
         />
       ) : (
         <button className="sidebar-expand" title="展开侧边栏" onClick={() => setSidebarOpen(true)}>
@@ -195,18 +231,11 @@ export default function App() {
                       #
                     </button>
                     <button
-                      className={`icon-btn ${showOutline ? "on" : ""}`}
-                      title="显示大纲"
-                      onClick={() => setShowOutline((v) => !v)}
+                      className={`icon-btn ${rightOpen ? "on" : ""}`}
+                      title="显示右侧边栏（Alt+4）"
+                      onClick={() => setRightOpen((v) => !v)}
                     >
                       ☰
-                    </button>
-                    <button
-                      className={`icon-btn ${showLinks ? "on" : ""}`}
-                      title="显示链接面板（反向链接 / 出链）"
-                      onClick={() => setShowLinks((v) => !v)}
-                    >
-                      🔗
                     </button>
                   </div>
                 </div>
@@ -236,18 +265,18 @@ export default function App() {
             )}
           </div>
 
-          {note && showOutline && <Outline source={note.content} onJump={(line) => {
-            const view = getView();
-            if (!view) return;
-            const doc = view.state.doc;
-            const target = doc.line(Math.min(line + 1, doc.lines));
-            view.dispatch({ selection: { anchor: target.from }, scrollIntoView: true });
-            view.focus();
-          }} />}
-
-          {note && showLinks && (
-            <LinksPanel
-              onJump={(path, line) => {
+          {note && rightOpen && (
+            <RightSidebar
+              source={note.content}
+              onJumpLine={(line) => {
+                const view = getView();
+                if (!view) return;
+                const doc = view.state.doc;
+                const target = doc.line(Math.min(line + 1, doc.lines));
+                view.dispatch({ selection: { anchor: target.from }, scrollIntoView: true });
+                view.focus();
+              }}
+              onJumpNote={(path, line) => {
                 void (async () => {
                   await useStore.getState().openNote(path);
                   // 等编辑器把新内容装进去再定位
@@ -261,6 +290,7 @@ export default function App() {
                   });
                 })();
               }}
+              onClose={() => setRightOpen(false)}
             />
           )}
         </div>
@@ -285,6 +315,14 @@ export default function App() {
               });
             })();
           }}
+        />
+      )}
+
+      {overlay === "settings" && (
+        <SettingsPanel
+          settings={settings}
+          onChange={setSettings}
+          onClose={() => setOverlay(null)}
         />
       )}
 

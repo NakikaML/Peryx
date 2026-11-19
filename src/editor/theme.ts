@@ -5,7 +5,7 @@ import { EditorView } from "@codemirror/view";
 export const peryxTheme = EditorView.theme({
   "&": {
     height: "100%",
-    fontSize: "16px",
+    fontSize: "var(--editor-font-size, 16px)",
     backgroundColor: "var(--bg-editor)",
     color: "var(--fg)",
   },
@@ -40,9 +40,27 @@ export const peryxTheme = EditorView.theme({
   ".cm-activeLineGutter": { backgroundColor: "var(--active-line)", color: "var(--fg-muted)" },
 
   // ---- 实时渲染样式 ----
-  ".cm-h1": { fontSize: "1.9em", fontWeight: "700", lineHeight: "1.35" },
-  ".cm-h2": { fontSize: "1.55em", fontWeight: "700", lineHeight: "1.4" },
-  ".cm-h3": { fontSize: "1.3em", fontWeight: "600", lineHeight: "1.45" },
+  ".cm-h1": {
+    fontSize: "calc(1.9em * var(--md-h1-scale, 1))",
+    fontWeight: "var(--md-h1-weight, 700)",
+    fontFamily: "var(--md-h1-font, inherit)",
+    color: "var(--md-h1-color, inherit)",
+    lineHeight: "1.35",
+  },
+  ".cm-h2": {
+    fontSize: "calc(1.55em * var(--md-h2-scale, 1))",
+    fontWeight: "var(--md-h2-weight, 700)",
+    fontFamily: "var(--md-h2-font, inherit)",
+    color: "var(--md-h2-color, inherit)",
+    lineHeight: "1.4",
+  },
+  ".cm-h3": {
+    fontSize: "calc(1.3em * var(--md-h3-scale, 1))",
+    fontWeight: "var(--md-h3-weight, 600)",
+    fontFamily: "var(--md-h3-font, inherit)",
+    color: "var(--md-h3-color, inherit)",
+    lineHeight: "1.45",
+  },
   ".cm-h4": { fontSize: "1.15em", fontWeight: "600" },
   ".cm-h5": { fontSize: "1.05em", fontWeight: "600" },
   ".cm-h6": { fontSize: "1em", fontWeight: "600", color: "var(--fg-muted)" },
@@ -80,10 +98,19 @@ export const peryxTheme = EditorView.theme({
     marginRight: "0.15em",
   },
 
-  ".cm-strong": { fontWeight: "700" },
-  ".cm-em": { fontStyle: "italic" },
+  ".cm-strong": {
+    fontWeight: "var(--md-b-weight, 700)",
+    color: "var(--md-b-color, inherit)",
+    fontFamily: "var(--md-b-font, inherit)",
+  },
+  ".cm-em": {
+    fontStyle: "var(--md-i-style, italic)",
+    color: "var(--md-i-color, inherit)",
+    fontFamily: "var(--md-i-font, inherit)",
+  },
   ".cm-strike": { textDecoration: "line-through", opacity: "0.55" },
   ".cm-highlight": {
+    color: "var(--md-mark-color, inherit)",
     backgroundColor: "rgba(255, 213, 79, 0.45)",
     borderRadius: "3px",
     padding: "0.05em 0.1em",
@@ -98,9 +125,11 @@ export const peryxTheme = EditorView.theme({
     fontSize: "0.92em",
   },
   ".cm-link-text": {
-    color: "var(--accent)",
+    color: "var(--md-link-color, var(--accent))",
     textDecoration: "underline",
     textUnderlineOffset: "2px",
+    fontFamily: "var(--md-link-font, inherit)",
+    fontSize: "calc(1em * var(--md-link-scale, 1))",
   },
   ".cm-math-text": {
     fontFamily: "var(--font-serif)",
@@ -220,8 +249,10 @@ export const peryxTheme = EditorView.theme({
   // 块级结构
   ".cm-quote": {
     borderLeft: "3px solid var(--quote-border)",
-    color: "var(--fg-muted)",
-    fontStyle: "italic",
+    color: "var(--md-quote-color, var(--fg-muted))",
+    fontStyle: "var(--md-quote-style, italic)",
+    fontFamily: "var(--md-quote-font, inherit)",
+    fontSize: "calc(1em * var(--md-quote-scale, 1))",
   },
   ".cm-code-line": {
     backgroundColor: "var(--code-bg)",

@@ -18,6 +18,11 @@ import { registerWikiActions } from "@/editor/livePreview";
 import { LinksPanel } from "@/components/LinksPanel";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ContentSearch } from "@/components/ContentSearch";
+import { RightSidebar } from "@/components/RightSidebar";
+import { SettingsPanel } from "@/components/SettingsPanel";
+import App from "@/App";
+import { defaultSettings } from "@/lib/settings";
+import type { Settings } from "@/lib/settings";
 
 // 调试/自动化测试用：把 store 暴露到 window
 (window as unknown as Record<string, unknown>).__STORE__ = { useStore };
@@ -216,7 +221,7 @@ function SidebarMock() {
 
   return (
     <div className="app" style={{ height: "100vh" }}>
-      <Sidebar onCreateNote={() => {}} onCreateFolder={() => {}} onCollapse={() => {}} />
+      <Sidebar onCreateNote={() => {}} onCreateFolder={() => {}} onCollapse={() => {}} onOpenSettings={() => {}} />
       <main className="main">
         <div className="workspace">
           <div className="editor-wrap">
@@ -488,7 +493,7 @@ function TagViewPreview() {
 
   return (
     <div className="app" style={{ height: "100vh" }}>
-      <Sidebar onCreateNote={() => {}} onCreateFolder={() => {}} onCollapse={() => {}} />
+      <Sidebar onCreateNote={() => {}} onCreateFolder={() => {}} onCollapse={() => {}} onOpenSettings={() => {}} />
       <main className="main">
         <div className="workspace">
           <div className="editor-wrap">
@@ -501,6 +506,161 @@ function TagViewPreview() {
       </main>
     </div>
   );
+}
+
+/** 内嵌图片测试页：mock read_image_data_url */
+function ImageEmbedPreview() {
+  const ref = React.useRef<EditorHandle | null>(null);
+  if (!(window as unknown as Record<string, unknown>).__IMG_MOCK__) {
+    // 1x1 红色 PNG —— 真实可解码，能触发 img 的 load
+    const redPng =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
+      invoke: async (cmd: string, args?: Record<string, unknown>) => {
+        if (cmd === "read_image_data_url") {
+          const rel = String(args?.relPath ?? "");
+          if (rel.includes("不存在")) throw new Error(`图片不存在：${rel}`);
+          return redPng;
+        }
+        throw new Error(`未 mock 的命令：${cmd}`);
+      },
+    };
+    (window as unknown as Record<string, unknown>).__IMG_MOCK__ = true;
+  }
+
+  const sample = [
+    "# 图片嵌入测试",
+    "",
+    "正常图片：![[assets/封面.png]]",
+    "",
+    "不存在的图片：![[assets/不存在.png]]",
+    "",
+    "代码块里的保持原样：",
+    "",
+    "```",
+    "![[assets/代码块里的图片.png]]",
+    "```",
+    "",
+  ].join("\n");
+
+  return (
+    <div style={{ height: "100vh" }}>
+      <MarkdownEditor
+        ref={(h) => {
+          (window as unknown as Record<string, unknown>).__EDITOR_HANDLE__ = h;
+          ref.current = h;
+        }}
+        docPath="image-test.md"
+        value={sample}
+        mode="live"
+        showLineNumbers={false}
+        onChange={() => {}}
+        onSave={() => {}}
+      />
+    </div>
+  );
+}
+
+/** 完整外壳预览：左侧栏 + 工具栏 + 右侧边栏（验证 v0.2.1 的结构改动） */
+function ShellPreview() {
+  const ref = React.useRef<EditorHandle | null>(null);
+  const sample = "# 微积分基础\n\n## 一、基本概念\n\n正文\n";
+  if (!(window as unknown as Record<string, unknown>).__SHELL_MOCK__) {
+    useStore.setState({
+      vault: { root: "D:\\Test", name: "Test" },
+      sidebarOpen: true,
+      note: {
+        path: "微积分基础.md",
+        title: "微积分基础",
+        content: sample,
+        dirty: false,
+      },
+      children: {
+        "": [
+          { name: "微积分基础.md", path: "微积分基础.md", isDir: false, modifiedMs: 0, size: 10 },
+        ],
+      },
+      backlinks: [],
+      outlinks: [],
+    });
+    (window as unknown as Record<string, unknown>).__SHELL_MOCK__ = true;
+  }
+
+  return (
+    <div className="app">
+      <Sidebar
+        onCreateNote={() => {}}
+        onCreateFolder={() => {}}
+        onCollapse={() => {}}
+        onOpenSettings={() => {}}
+      />
+      <main className="main">
+        <Toolbar getView={() => ref.current?.view ?? null} mode="live" onModeChange={() => {}} />
+        <div className="workspace">
+          <div className="editor-wrap">
+            <MarkdownEditor
+              ref={(h) => {
+                (window as unknown as Record<string, unknown>).__EDITOR_HANDLE__ = h;
+                ref.current = h;
+              }}
+              docPath="微积分基础.md"
+              value={sample}
+              mode="live"
+              showLineNumbers={false}
+              onChange={() => {}}
+              onSave={() => {}}
+            />
+          </div>
+          <RightSidebar
+            source={sample}
+            onJumpLine={() => {}}
+            onJumpNote={() => {}}
+            onClose={() => {}}
+          />
+        </div>
+      </main>
+    </div>
+  );
+}
+
+/** 设置面板预览 */
+function SettingsPreview() {
+  const [settings, setSettings] = React.useState<Settings>(defaultSettings);
+  return (
+    <div style={{ height: "100vh", background: "var(--bg)" }}>
+      <SettingsPanel settings={settings} onChange={setSettings} onClose={() => {}} />
+    </div>
+  );
+}
+
+/**
+ * 挂载真实 App（种好 store 数据 + mock IPC），
+ * 用于验证快捷键这类「只在 App 里才有」的行为。
+ */
+function AppPreview() {
+  if (!(window as unknown as Record<string, unknown>).__APP_MOCK__) {
+    installIpcMock();
+    const sample = "# 微积分基础\n\n## 一、基本概念\n\n正文 #数学\n";
+    useStore.setState({
+      vault: { root: "D:\\Test", name: "Test" },
+      sidebarOpen: true,
+      note: { path: "微积分基础.md", title: "微积分基础", content: sample, dirty: false },
+      children: {
+        "": [
+          { name: "微积分基础.md", path: "微积分基础.md", isDir: false, modifiedMs: 0, size: 10 },
+        ],
+      },
+      backlinks: [],
+      outlinks: [],
+      tags: [],
+      recentVaults: [],
+    });
+    setLinkIndex([
+      { path: "微积分基础.md", title: "微积分基础", tags: ["数学"], links: [], mtimeMs: 0, size: 10 },
+    ]);
+    (window as unknown as Record<string, unknown>).__APP_MOCK__ = true;
+  }
+  return <App />;
 }
 
 function Preview() {
@@ -520,6 +680,10 @@ function Preview() {
   if (page === "gsearch") return <GSearchPreview />;
   if (page === "tags") return <TagsPreview />;
   if (page === "tagview") return <TagViewPreview />;
+  if (page === "image") return <ImageEmbedPreview />;
+  if (page === "shell") return <ShellPreview />;
+  if (page === "settings") return <SettingsPreview />;
+  if (page === "app") return <AppPreview />;
 
   React.useEffect(() => {
     let cancelled = false;

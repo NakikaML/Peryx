@@ -28,6 +28,20 @@ import { RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
 import type { EditorState, Extension, Transaction } from "@codemirror/state";
 import { renderKatexHtml, renderInline } from "@/lib/markdown";
 import { linkTargetExists, resolveLinkTarget } from "@/lib/linkCache";
+import { getCachedImage, imageFailed, resolveImagePath } from "@/lib/imageCache";
+
+/**
+ * 当前笔记的相对路径。
+ * 装饰构建时用它解析 `![[图片]]` 这种只写文件名的引用。
+ * 由 MarkdownEditor 在挂载/切换笔记时更新。
+ */
+let currentDocPath = "";
+export function setLivePreviewDocPath(path: string) {
+  currentDocPath = path;
+}
+
+/** 强制重算装饰（图片异步加载完成后使用） */
+export const refreshDecorations = StateEffect.define<null>();
 
 /** 开关实时渲染（源码模式时置为 false） */
 export const setLivePreview = StateEffect.define<boolean>();
@@ -435,6 +449,79 @@ class WikiLinkWidget extends WidgetType {
   }
 }
 
+/**
+ * `![[图片]]` 内嵌图片。
+ *
+ * 图片来源是 `data:` URL（见 Rust 的 read_image_data_url），
+ * 通过 imageCache 同步缓存命中；未命中时先渲染占位，加载完成后再替换。
+ */
+/** 图片加载状态 */
+type EmbedState = "loaded" | "failed" | "pending";
+
+class EmbedImageWidget extends WidgetType {
+  constructor(
+    readonly target: string,
+    readonly resolved: string,
+    readonly from: number,
+    /** 构造时固化的加载状态 —— 不能用惰性 getter 读取，见下面的说明 */
+    readonly state: EmbedState,
+  ) {
+    super();
+  }
+  eq(other: EmbedImageWidget): boolean {
+    return (
+      other.target === this.target &&
+      other.resolved === this.resolved &&
+      other.from === this.from &&
+      other.state === this.state
+    );
+  }
+  toDOM(): HTMLElement {
+    const wrap = document.createElement("span");
+    wrap.className = "cm-embed";
+
+    if (this.state === "loaded") {
+      const url = getCachedImage(this.resolved);
+      if (url) {
+        const img = document.createElement("img");
+        img.className = "cm-embed-img";
+        img.src = url;
+        img.alt = this.target;
+        img.title = `${this.target}（${this.resolved}）`;
+        img.draggable = false;
+        wrap.appendChild(img);
+        return wrap;
+      }
+    }
+
+    // 占位：加载中 / 失败
+    const ph = document.createElement("span");
+    const isFailed = this.state === "failed";
+    ph.className = isFailed ? "cm-embed-ph cm-embed-failed" : "cm-embed-ph";
+    ph.textContent = isFailed
+      ? `⚠ 图片无法加载：${this.target}`
+      : `🖼 正在加载 ${this.target}…`;
+    wrap.appendChild(ph);
+    return wrap;
+  }
+  ignoreEvent(): boolean {
+    return false;
+  }
+}
+
+/**
+ * 读取某路径当前的加载状态，在构造 widget 时调用一次。
+ *
+ * 为什么必须在构造时固化：`eq()` 是比较新旧两个 widget。
+ * 如果状态写成惰性 getter，比较发生时缓存早已填充，
+ * 新旧 widget 都会读到「loaded」，`eq` 判定相等 →
+ * CodeMirror 复用旧的占位 DOM，图片永远显示不出来。
+ */
+function embedStateOf(resolved: string): EmbedState {
+  if (getCachedImage(resolved)) return "loaded";
+  return imageFailed(resolved) ? "failed" : "pending";
+}
+
 /** 行内公式渲染结果 */
 class InlineMathWidget extends WidgetType {
   constructor(readonly tex: string) {
@@ -803,6 +890,11 @@ function buildDecorations(state: EditorState): DecorationSet {
         }
 
         case "Image": {
+          const raw = doc.sliceString(from, to);
+          // `![[图片]]` 是我们自己的嵌入语法（由 4.4 段渲染成 <img>）。
+          // lezer 会把它当 Image 节点；这里必须放过，否则整段被隐藏，
+          // 并与后面的 replace 装饰重叠，导致图片 widget 被去重丢弃。
+          if (raw.startsWith("![[")) return;
           mark(from, to, md);
           return;
         }
@@ -835,6 +927,46 @@ function buildDecorations(state: EditorState): DecorationSet {
     }
   }
 
+  // ---- 4.4 嵌入图片 ![[图片]] ----
+  // 必须在双链之前处理，否则 `![[x.png]]` 会被当作普通双链
+  for (let n = 1; n <= doc.lines; n++) {
+    if (inFenceLines.has(n)) continue;
+    const line = doc.line(n);
+    const text = line.text;
+    const active = isActivePos(line.from);
+
+    let i = 0;
+    while (i + 3 < text.length) {
+      if (!(text[i] === "!" && text[i + 1] === "[" && text[i + 2] === "[")) {
+        i++;
+        continue;
+      }
+      const close = text.indexOf("]]", i + 3);
+      if (close < 0) break;
+      const target = text.slice(i + 3, close).trim();
+      if (!target) {
+        i = close + 2;
+        continue;
+      }
+      const from = line.from + i;
+      const to = line.from + close + 2;
+      if (active) {
+        // 光标在本行：显示源码，方便改图片名
+        mark(from, to, wikiSourceDeco);
+      } else {
+        const resolved = resolveImagePath(target, currentDocPath);
+        pending.push({
+          from,
+          to,
+          deco: Decoration.replace({
+            widget: new EmbedImageWidget(target, resolved, from, embedStateOf(resolved)),
+          }),
+        });
+      }
+      i = close + 2;
+    }
+  }
+
   // ---- 4.5 双链 [[目标]] / [[目标|别名]] ----
   // 放在行内公式之前：`[[a$b$]]` 应整体当链接，而不是把 `$b$` 当公式
   for (let n = 1; n <= doc.lines; n++) {
@@ -849,6 +981,11 @@ function buildDecorations(state: EditorState): DecorationSet {
     while (i + 1 < text.length) {
       if (text[i] !== "[" || text[i + 1] !== "[") {
         i++;
+        continue;
+      }
+      // `![[...]]` 是嵌入（图片），由上一段单独处理，这里跳过
+      if (i > 0 && text[i - 1] === "!") {
+        i += 2;
         continue;
       }
       const close = text.indexOf("]]", i + 2);
@@ -988,7 +1125,9 @@ function buildDecorations(state: EditorState): DecorationSet {
       if (p.from === lastZeroFrom) continue;
       lastZeroFrom = p.from;
     }
-    if (p.from < lastTo) continue;
+    if (p.from < lastTo) {
+      continue;
+    }
     builder.add(p.from, p.to, p.deco);
     lastTo = p.to;
   }
@@ -1087,7 +1226,8 @@ export const livePreviewField = StateField.define<DecorationSet>({
   },
   update(deco, tr) {
     const enabledChanged = tr.effects.some((e) => e.is(setLivePreview));
-    if (tr.docChanged || enabledChanged || selectionLineChanged(tr)) {
+    const forced = tr.effects.some((e) => e.is(refreshDecorations));
+    if (tr.docChanged || enabledChanged || forced || selectionLineChanged(tr)) {
       return buildDecorations(tr.state);
     }
     return deco.map(tr.changes);

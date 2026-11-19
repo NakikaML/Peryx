@@ -72,6 +72,9 @@ pub fn run() {
             commands::rename_entry,
             commands::save_attachment,
             commands::reveal_vault,
+            commands::read_image_data_url,
+            commands::load_settings,
+            commands::save_settings,
             // ---- v0.2 索引 / 搜索 / 双链 / 标签 ----
             index_cmd::rebuild_index,
             index_cmd::index_stats,
@@ -111,6 +114,7 @@ mod tests {
         let cfg = commands::AppConfig {
             last_vault: Some(canon.to_string_lossy().to_string()),
             recent_vaults: vec![canon.to_string_lossy().to_string()],
+            settings: None,
         };
         std::fs::write(&paths.config_file, serde_json::to_string(&cfg).unwrap()).unwrap();
 
@@ -130,6 +134,7 @@ mod tests {
         let cfg = commands::AppConfig {
             last_vault: Some(dir.join("not_exist").to_string_lossy().to_string()),
             recent_vaults: vec![],
+            settings: None,
         };
         std::fs::write(&paths.config_file, serde_json::to_string(&cfg).unwrap()).unwrap();
 

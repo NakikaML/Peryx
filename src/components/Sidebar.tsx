@@ -12,6 +12,8 @@ interface Props {
   onCreateNote: () => void;
   onCreateFolder: () => void;
   onCollapse: () => void;
+  /** 打开设置面板 */
+  onOpenSettings: () => void;
 }
 
 /** 从完整路径里取最后一段作为显示名 */
@@ -20,7 +22,7 @@ function baseName(p: string): string {
   return parts[parts.length - 1] ?? p;
 }
 
-export function Sidebar({ onCreateNote, onCreateFolder, onCollapse }: Props) {
+export function Sidebar({ onCreateNote, onCreateFolder, onCollapse, onOpenSettings }: Props) {
   const vault = useStore((s) => s.vault);
   const children = useStore((s) => s.children);
   const expanded = useStore((s) => s.expanded);
@@ -216,6 +218,10 @@ export function Sidebar({ onCreateNote, onCreateFolder, onCollapse }: Props) {
       </div>
 
       <div className="sidebar-foot">
+        <button className="settings-btn" title="设置（Alt+0）" onClick={onOpenSettings}>
+          <span className="settings-icon">⚙</span>
+          <span className="settings-text">设置</span>
+        </button>
         <span className="hint">Ctrl+N 新建 · Ctrl+S 保存</span>
       </div>
     </aside>

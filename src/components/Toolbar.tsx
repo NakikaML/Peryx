@@ -44,6 +44,30 @@ interface Props {
   onModeChange: (mode: EditorMode) => void;
 }
 
+/** 荧光笔图标（高亮） */
+function HighlighterIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {/* 笔身 */}
+      <path d="M14.5 3.5 20 9l-8.2 8.2a2 2 0 0 1-1.4.6H7.3l-2.6-2.6v-3.1a2 2 0 0 1 .6-1.4z" />
+      {/* 笔尖分界 */}
+      <path d="M11.5 6.5 17 12" />
+      {/* 底部描线（表示涂抹） */}
+      <path d="M4 21h13" strokeWidth="2.4" />
+    </svg>
+  );
+}
+
 const groups: { id: string; items: ButtonDef[] }[] = [
   {
     id: "heading",
@@ -60,7 +84,7 @@ const groups: { id: string; items: ButtonDef[] }[] = [
       { id: "bold", label: "B", title: "加粗", shortcut: "Ctrl+B", run: (v) => toggleWrap(v, "**", "粗体") },
       { id: "italic", label: "I", title: "斜体", shortcut: "Ctrl+I", run: (v) => toggleWrap(v, "*", "斜体") },
       { id: "strike", label: "S", title: "删除线", shortcut: "Ctrl+Shift+S", run: (v) => toggleWrap(v, "~~", "删除线") },
-      { id: "mark", label: "==", title: "高亮", run: (v) => toggleHighlight(v) },
+      { id: "mark", label: "highlight", title: "高亮", run: (v) => toggleHighlight(v) },
       { id: "code-inline", label: "</>", title: "行内代码", shortcut: "Ctrl+E", run: (v) => toggleInlineCode(v) },
     ],
   },
@@ -90,6 +114,8 @@ type DialogKind = "link" | "table" | "math" | "code" | "image";
 
 export function Toolbar({ getView, mode, onModeChange }: Props) {
   const [dialog, setDialog] = useState<DialogKind | null>(null);
+  /** Hₙ 下拉是否展开 */
+  const [headingMenu, setHeadingMenu] = useState(false);
 
   const ctx: ToolbarContext = {
     openLink: () => setDialog("link"),
@@ -147,9 +173,57 @@ export function Toolbar({ getView, mode, onModeChange }: Props) {
                   if (view) btn.run(view, ctx);
                 }}
               >
-                {btn.label}
+                {btn.id === "mark" ? <HighlighterIcon /> : btn.label}
               </button>
             ))}
+            {/* 标题组后面挂一个 Hₙ 下拉，放不常用的 H4–H6 */}
+            {g.id === "heading" && (
+              <div className="tb-dropdown-wrap">
+                <button
+                  className="tb-btn tb-hn"
+                  title="更多标题级别（H4–H6）"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setHeadingMenu((v) => !v)}
+                >
+                  H<sub>n</sub>
+                  <span className="tb-caret">▾</span>
+                </button>
+                {headingMenu && (
+                  <div className="ctx-mask" onMouseDown={() => setHeadingMenu(false)}>
+                    <div className="tb-dropdown" onMouseDown={(e) => e.stopPropagation()}>
+                      {[1, 2, 3, 4, 5, 6].map((lv) => (
+                        <button
+                          key={lv}
+                          className="tb-dropdown-item"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setHeadingMenu(false);
+                            const view = getView();
+                            if (view) setHeading(view, lv);
+                          }}
+                        >
+                          <span className={`tb-heading-sample tb-h${lv}`}>H{lv}</span>
+                          <span className="tb-dropdown-desc">{lv} 级标题</span>
+                        </button>
+                      ))}
+                      <div className="ctx-sep" />
+                      <button
+                        className="tb-dropdown-item"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setHeadingMenu(false);
+                          const view = getView();
+                          if (view) setHeading(view, 0);
+                        }}
+                      >
+                        <span className="tb-heading-sample">正文</span>
+                        <span className="tb-dropdown-desc">清除标题</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ))}
 
