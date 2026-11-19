@@ -1,0 +1,258 @@
+/**
+ * 阅读模式：纯渲染视图（不显示任何 Markdown 源码）。
+ *
+ * 与实时渲染的区别：
+ * - 实时渲染仍是编辑器，光标行会展开源码
+ * - 阅读模式是只读 HTML，一个源码符号都不显示
+ *
+ * 复用 `markdown.ts` 的渲染管线，并额外处理本项目自有的语法：
+ * `[[双链]]`、`![[图片]]`、`#标签`。
+ */
+
+import { useEffect, useMemo, useState } from "react";
+import { renderMarkdown } from "@/lib/markdown";
+import { api } from "@/lib/api";
+import { getCachedImage, onImageLoaded, resolveImagePath } from "@/lib/imageCache";
+import { linkTargetExists, resolveLinkTarget } from "@/lib/linkCache";
+
+interface Props {
+  /** Markdown 原文 */
+  source: string;
+  /** 当前笔记相对路径（解析图片用） */
+  docPath: string;
+  /** 点击双链 */
+  onOpenLink?: (path: string) => void;
+  /** 点击不存在笔记的双链 */
+  onCreateLink?: (target: string) => void;
+  /** 点击标签 */
+  onTagClick?: (tag: string) => void;
+  /** 双击正文 → 回到编辑 */
+  onRequestEdit?: () => void;
+}
+
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|svg|avif|ico)$/i;
+
+/**
+ * 把本项目自有语法预处理成标准 Markdown，
+ * 这样可以直接交给 markdown-it 渲染。
+ *
+ * 注意：必须在 HTML 转义之前处理，否则 `[[x]]` 里的字符会被破坏。
+ */
+function normalizeOwnSyntax(source: string) {
+  const images: string[] = [];
+  const links: { target: string; alias: string | null }[] = [];
+
+  let text = source;
+
+  // 1) ![[图片]] → 占位符，稍后替换成 <img>
+  text = text.replace(/!\[\[([^\]]+)\]\]/g, (_m, raw: string) => {
+    const target = String(raw).split("|")[0].trim();
+    if (!IMAGE_EXT.test(target)) {
+      // 不是图片 → 当作笔记嵌入，这里先降级成普通链接
+      links.push({ target, alias: null });
+      return `[[${target}]]`;
+    }
+    images.push(target);
+    return `\uE000IMG${images.length - 1}\uE001`;
+  });
+
+  // 2) [[目标|别名]] → 占位符
+  text = text.replace(/\[\[([^\]]+)\]\]/g, (_m, raw: string) => {
+    const parts = String(raw).split("|");
+    const target = parts[0].trim();
+    const alias = parts.length > 1 ? parts[1].trim() : null;
+    links.push({ target, alias });
+    return `\uE000LINK${links.length - 1}\uE001`;
+  });
+
+  return { text, images, links };
+}
+
+export function ReadingView({
+  source,
+  docPath,
+  onOpenLink,
+  onCreateLink,
+  onTagClick,
+  onRequestEdit,
+}: Props) {
+  const [imgUrls, setImgUrls] = useState<Record<string, string | null>>({});
+
+  const { text, images, links } = useMemo(() => normalizeOwnSyntax(source), [source]);
+
+  // 图片：先取缓存，未命中就异步加载
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const next: Record<string, string | null> = {};
+      for (const target of images) {
+        const key = resolveImagePath(target, docPath);
+        const cached = getCachedImage(key);
+        if (cached) {
+          next[key] = cached;
+          continue;
+        }
+        next[key] = null;
+        void api
+          .resolveAttachment(key)
+          .catch(() => null)
+          .then((resolved) => api.readImageDataUrl(resolved ?? key))
+          .then((url) => {
+            if (cancelled) return;
+            setImgUrls((prev) => ({ ...prev, [key]: url }));
+          })
+          .catch(() => {
+            if (cancelled) return;
+            setImgUrls((prev) => ({ ...prev, [key]: "" }));
+          });
+      }
+      if (!cancelled) setImgUrls((prev) => ({ ...next, ...prev }));
+    };
+    void load();
+    // 编辑器那边加载完成也会通知
+    const off = onImageLoaded(() => {
+      const next: Record<string, string | null> = {};
+      for (const target of images) {
+        const key = resolveImagePath(target, docPath);
+        const cached = getCachedImage(key);
+        if (cached) next[key] = cached;
+      }
+      setImgUrls((prev) => ({ ...prev, ...next }));
+    });
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, [images, docPath]);
+
+  const html = useMemo(() => {
+    let out = renderMarkdown(text);
+
+    // 图片占位符 → <img>
+    out = out.replace(/\uE000IMG(\d+)\uE001/g, (_m, idx: string) => {
+      const target = images[Number(idx)];
+      if (target === undefined) return "";
+      const key = resolveImagePath(target, docPath);
+      const url = imgUrls[key];
+      const name = escapeAttr(target);
+      if (url === undefined || url === null) {
+        return `<span class="read-img-pending">🖼 ${name}</span>`;
+      }
+      if (url === "") {
+        return `<span class="read-img-failed">⚠ 图片无法加载：${name}</span>`;
+      }
+      return `<img class="read-img" src="${url}" alt="${name}" title="${name}" />`;
+    });
+
+    // 链接占位符 → <a>，附上 data 属性供点击处理
+    out = out.replace(/\uE000LINK(\d+)\uE001/g, (_m, idx: string) => {
+      const link = links[Number(idx)];
+      if (!link) return "";
+      const exists = linkTargetExists(link.target);
+      const label = escapeHtml(link.alias ?? link.target);
+      const cls = exists ? "read-link" : "read-link read-link-missing";
+      const title = exists ? `跳转到「${escapeAttr(link.target)}」` : `「${escapeAttr(link.target)}」还不存在，点击创建`;
+      return `<a class="${cls}" href="#" data-link="${escapeAttr(link.target)}" title="${title}">${label}</a>`;
+    });
+
+    return applyTags(out);
+  }, [text, images, links, imgUrls, docPath]);
+
+  /** 点击委托：双链 / 标签 */
+  const onClick = (e: React.MouseEvent) => {
+    const el = e.target as HTMLElement;
+
+    const linkEl = el.closest("[data-link]") as HTMLElement | null;
+    if (linkEl) {
+      e.preventDefault();
+      const target = linkEl.dataset.link ?? "";
+      const path = resolveLinkTarget(target);
+      if (path) onOpenLink?.(path);
+      else onCreateLink?.(target);
+      return;
+    }
+
+    const tagEl = el.closest("[data-read-tag]") as HTMLElement | null;
+    if (tagEl) {
+      e.preventDefault();
+      onTagClick?.(tagEl.dataset.readTag ?? "");
+    }
+  };
+
+  return (
+    <div
+      className="reading-view"
+      onClick={onClick}
+      onDoubleClick={() => onRequestEdit?.()}
+      title="双击回到编辑"
+    >
+      <div className="reading-body markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
+    </div>
+  );
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function escapeAttr(s: string): string {
+  return escapeHtml(s).replace(/'/g, "&#39;");
+}
+
+/** 标签必须至少有一个非数字字符，且不含空格 */
+const TAG_RE = /#([\p{L}\p{N}_/-]*[\p{L}_/-][\p{L}\p{N}_/-]*)/gu;
+
+/**
+ * 把正文文本里的 `#标签` 换成可点击的 span。
+ *
+ * 用 DOM 遍历而不是正则替换整段 HTML，这样天然跳过
+ * `<pre>` / `<code>` / `<a>` / `<img>` 里的内容。
+ */
+function applyTags(html: string): string {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const skip = new Set(["PRE", "CODE", "A", "IMG", "SCRIPT", "STYLE"]);
+
+  const walk = (node: Node) => {
+    for (const child of Array.from(node.childNodes)) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        const text = child.textContent ?? "";
+        if (!text.includes("#")) continue;
+        TAG_RE.lastIndex = 0;
+        if (!TAG_RE.test(text)) continue;
+        TAG_RE.lastIndex = 0;
+
+        const frag = doc.createDocumentFragment();
+        let last = 0;
+        let m: RegExpExecArray | null;
+        while ((m = TAG_RE.exec(text))) {
+          const start = m.index;
+          // 前面紧贴字母数字时不算标签（比如 a#b）
+          if (start > 0 && /[\p{L}\p{N}_/-]/u.test(text[start - 1])) continue;
+          frag.appendChild(doc.createTextNode(text.slice(last, start)));
+          const span = doc.createElement("span");
+          span.className = "read-tag";
+          span.dataset.readTag = m[1];
+          span.textContent = m[0];
+          span.title = `按标签筛选：${m[1]}`;
+          frag.appendChild(span);
+          last = start + m[0].length;
+        }
+        if (last === 0) continue;
+        frag.appendChild(doc.createTextNode(text.slice(last)));
+        node.replaceChild(frag, child);
+        continue;
+      }
+      if (child.nodeType === Node.ELEMENT_NODE) {
+        if (skip.has((child as Element).tagName)) continue;
+        walk(child);
+      }
+    }
+  };
+
+  walk(doc.body);
+  return doc.body.innerHTML;
+}

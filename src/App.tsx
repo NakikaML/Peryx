@@ -15,6 +15,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { ContentSearch } from "@/components/ContentSearch";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { ImagePreview } from "@/components/ImagePreview";
+import { ReadingView } from "@/components/ReadingView";
 import { applySettings, defaultSettings, loadSettings, matchShortcut } from "@/lib/settings";
 import type { Settings } from "@/lib/settings";
 import { useStore } from "@/stores/app";
@@ -245,6 +246,24 @@ export default function App() {
                 </div>
                 {loadingNote ? (
                   <div className="editor-loading">正在加载…</div>
+                ) : mode === "read" ? (
+                  <ReadingView
+                    source={note.content}
+                    docPath={note.path}
+                    onOpenLink={(path) => void useStore.getState().openNote(path)}
+                    onCreateLink={(target) => {
+                      const st = useStore.getState();
+                      const dir = st.note?.path.includes("/")
+                        ? st.note.path.slice(0, st.note.path.lastIndexOf("/"))
+                        : "";
+                      void (async () => {
+                        await st.createNote(dir, target);
+                        await refreshLinkIndex();
+                      })();
+                    }}
+                    onTagClick={(tag) => void useStore.getState().filterByTag(tag)}
+                    onRequestEdit={() => setMode("live")}
+                  />
                 ) : (
                   <MarkdownEditor
                     ref={editorRef}

@@ -246,6 +246,14 @@ export function Toolbar({ getView, mode, onModeChange }: Props) {
           >
             源码
           </button>
+          <button
+            className={`mode-btn ${mode === "read" ? "on" : ""}`}
+            title="阅读模式：只显示排版结果，一个符号都不显示（双击正文回到编辑）"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onModeChange("read")}
+          >
+            阅读
+          </button>
         </div>
       </div>
 

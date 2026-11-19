@@ -17,7 +17,9 @@ export function StatusBar({ cursor, saving }: Props) {
 
   return (
     <div className="statusbar">
-      <span className="sb-item">{mode === "live" ? "实时渲染" : "源码模式"}</span>
+      <span className="sb-item">
+        {mode === "live" ? "实时渲染" : mode === "read" ? "阅读模式" : "源码模式"}
+      </span>
       {note && (
         <span className="sb-item" title={note.path}>
           {note.path}

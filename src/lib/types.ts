@@ -20,7 +20,7 @@ export interface FileNode {
 }
 
 /** 编辑器视图模式 */
-export type EditorMode = "live" | "source";
+export type EditorMode = "live" | "source" | "read";
 
 /** 当前打开的笔记 */
 export interface OpenNote {

@@ -845,6 +845,83 @@ function MathBoldPreview() {
   return <App />;
 }
 
+/** 阅读模式测试页 */
+function ReadingModePreview() {
+  const sample = [
+    "# 阅读模式测试",
+    "",
+    "## 二级标题",
+    "",
+    "这段有**加粗**和*斜体*，还有 `行内代码`。",
+    "",
+    "链接到已存在的笔记：[[微积分基础]]",
+    "",
+    "指向不存在的：[[还没有的笔记]]",
+    "",
+    "嵌入图片：![[封面.png]]",
+    "",
+    "标签：#数学 #笔记",
+    "",
+    "- 列表一",
+    "- 列表二",
+    "",
+    "```js",
+    "const a = 1;",
+    "```",
+    "",
+    "| 列 A | 列 B |",
+    "| --- | --- |",
+    "| 1 | 2 |",
+    "",
+  ].join("\n");
+
+  if (!(window as unknown as Record<string, unknown>).__READING_MOCK__) {
+    const redPng =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
+      invoke: async (cmd: string) => {
+        if (cmd === "read_image_data_url") return redPng;
+        if (cmd === "resolve_attachment") return "封面.png";
+        if (cmd === "load_settings") return null;
+        if (cmd === "get_vault") return null;
+        if (cmd === "get_recent_vaults") return [];
+        throw new Error(`未 mock 的命令：${cmd}`);
+      },
+    };
+    useStore.setState({
+      vault: { root: "D:\\Test", name: "Test" },
+      sidebarOpen: true,
+      mode: "read",
+      note: { path: "阅读测试.md", title: "阅读测试", content: sample, dirty: false },
+      children: {
+        "": [
+          { name: "阅读测试.md", path: "阅读测试.md", isDir: false, isImage: false, modifiedMs: 0, size: 10 },
+        ],
+      },
+      backlinks: [],
+      outlinks: [],
+      tags: [],
+    });
+    setLinkIndex([
+      { path: "微积分基础.md", title: "微积分基础", tags: [], links: [], mtimeMs: 0, size: 0 },
+    ]);
+    (window as unknown as Record<string, unknown>).__READING_MOCK__ = true;
+  }
+
+  // 记录阅读态点了哪个链接
+  React.useEffect(() => {
+    const orig = useStore.getState().openNote;
+    useStore.setState({
+      openNote: async (p: string) => {
+        (window as unknown as Record<string, unknown>).__READ_OPENED__ = p;
+        return orig(p);
+      },
+    });
+  }, []);
+
+  return <App />;
+}
+
 function Preview() {
   const query = new URLSearchParams(location.search);
   const page = query.get("page");
@@ -869,6 +946,7 @@ function Preview() {
   if (page === "treeimg") return <TreeImagePreview />;
   if (page === "caret") return <CaretPreview />;
   if (page === "mathbold") return <MathBoldPreview />;
+  if (page === "reading") return <ReadingModePreview />;
 
   React.useEffect(() => {
     let cancelled = false;
