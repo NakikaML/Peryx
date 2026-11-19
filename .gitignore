@@ -1,0 +1,30 @@
+# 依赖
+node_modules/
+.pnpm-store/
+
+# 构建产物
+dist/
+src-tauri/target/
+src-tauri/gen/
+target/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 本地环境
+.env
+.env.local
+
+# 临时截图（docs/ 下的正式截图要保留）
+/*.png
+/*.jpg
+!docs/**/*.png
+
+# 本地测试笔记库
+/PeryxTestVault/
+/PeryxSortVault/

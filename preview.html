@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>栖知 Peryx — 开发预览</title>
+    <script>
+      window.__ERRORS__ = [];
+      window.addEventListener("error", (e) => {
+        window.__ERRORS__.push("error: " + (e.message || "") + " @" + (e.filename || "") + ":" + (e.lineno || ""));
+      });
+      window.addEventListener("unhandledrejection", (e) => {
+        window.__ERRORS__.push("rejection: " + String((e.reason && e.reason.stack) || e.reason));
+      });
+      const origError = console.error;
+      console.error = function (...args) {
+        window.__ERRORS__.push("console.error: " + args.map(String).join(" "));
+        origError.apply(console, args);
+      };
+
+      // 检查关键元素的 user-select 计算样式
+      window.__SELECT_CHECK__ = function () {
+        const pick = (sel) => {
+          const el = document.querySelector(sel);
+          if (!el) return "(元素不存在)";
+          const cs = getComputedStyle(el);
+          return cs.userSelect || cs.webkitUserSelect || "(空)";
+        };
+        return {
+          body: pick("body"),
+          toolbar: pick(".toolbar"),
+          treeLabel: pick(".tree-item .tree-label"),
+          editorContent: pick(".cm-content"),
+          noteTitle: pick(".note-title"),
+          tagline: pick(".tagline"),
+          tip: pick(".tip"),
+          statusbar: pick(".statusbar"),
+          button: pick(".btn-primary"),
+        };
+      };
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/preview.tsx"></script>
+    <script>
+      setTimeout(function () {
+        var out = { errors: window.__ERRORS__, cursorInfo: window.__CURSOR_INFO__ };
+        try {
+          out.selectStyles = window.__SELECT_CHECK__ ? window.__SELECT_CHECK__() : "(无检查函数)";
+        } catch (e) {
+          out.selectStyles = "检查失败: " + e.message;
+        }
+        var pre = document.createElement("pre");
+        pre.id = "captured-errors";
+        pre.textContent = JSON.stringify(out, null, 2);
+        document.body.appendChild(pre);
+      }, 6000);
+    </script>
+  </body>
+</html>
