@@ -66,25 +66,43 @@ async function main() {
     await sleep(700);
   };
 
+  const mouse = async (type, x, y) =>
+    cdp("Input.dispatchMouseEvent", {
+      type, x, y, button: "left",
+      buttons: type === "mouseReleased" ? 0 : 1,
+      clickCount: 1,
+    });
+
+  /** 真实拖动：按住标签移到编辑区指定比例位置再松手 */
   const dragTo = async (title, side) => {
-    await js(`(() => {
+    const box = await js(`(() => {
       const tab = Array.from(document.querySelectorAll('.tabbar-main .tab'))
         .find(e => (e.querySelector('.tab-title')?.textContent || '') === '${title}');
-      if (!tab) return false;
-      const dt = new DataTransfer();
-      tab.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt }));
-      return true;
+      if (!tab) return null;
+      const r = tab.getBoundingClientRect();
+      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
     })()`);
-    await sleep(400);
-    await js(`(() => {
-      const zone = document.querySelector('[data-drop-side="${side}"]');
-      if (!zone) return false;
-      const dt = new DataTransfer();
-      zone.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
-      zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
-      return true;
+    const pane = await js(`(() => {
+      const el = document.querySelector('.pane-area');
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { left: r.left, top: r.top, width: r.width, height: r.height };
     })()`);
-    await sleep(1400);
+    if (!box || !pane) return false;
+
+    const fx = side === "left" ? 0.05 : side === "right" ? 0.95 : 0.5;
+    const fy = side === "top" ? 0.05 : side === "bottom" ? 0.95 : 0.5;
+    const to = { x: Math.round(pane.left + pane.width * fx), y: Math.round(pane.top + pane.height * fy) };
+
+    await mouse("mousePressed", box.x, box.y);
+    for (let i = 1; i <= 6; i++) {
+      await mouse("mouseMoved", Math.round(box.x + ((to.x - box.x) * i) / 6), Math.round(box.y + ((to.y - box.y) * i) / 6));
+      await sleep(30);
+    }
+    await sleep(150);
+    await mouse("mouseReleased", to.x, to.y);
+    await sleep(1300);
+    return true;
   };
 
   const state = () =>

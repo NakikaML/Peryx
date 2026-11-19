@@ -1,24 +1,80 @@
 /**
- * Tab 拖拽的共享状态。
+ * 标签页拖拽（指针事件实现，不用 HTML5 Drag and Drop）。
  *
- * HTML5 拖放在 `dragover` 阶段拿不到 dataTransfer 的内容（浏览器限制），
- * 所以用一个模块级变量记住「正在拖哪个标签」，供拖放热区判断。
+ * 为什么不用原生拖放：
+ * - `dragover` 阶段读不到 `dataTransfer`，只能靠模块变量兜底
+ * - 各浏览器对 `dragstart`/`dragend` 的触发时机不一致，
+ *   React 重渲染时还可能直接把拖动打断
+ * - 合成事件测得过、真实拖动却不生效，很难排查
+ *
+ * 改成 mousedown → mousemove（超过阈值）→ mouseup 自己判定落点，
+ * 行为完全可控，也能用真实鼠标事件测试。
  */
 
 /** 面板标识：主面板 / 分屏 */
 export type PaneId = "main" | "side";
 
-let dragging: { path: string; pane: PaneId } | null = null;
-
-export function setDraggingTab(path: string | null, pane: PaneId | null) {
-  dragging = path && pane ? { path, pane } : null;
-}
-
-export function getDraggingTab(): { path: string; pane: PaneId } | null {
-  return dragging;
-}
-
 /** 分屏方向 */
 export type SplitSide = "left" | "right" | "top" | "bottom";
+
+export interface TabDragState {
+  path: string;
+  /** 从哪个面板拖出来的 */
+  pane: PaneId;
+}
+
+let state: TabDragState | null = null;
+const listeners = new Set<(s: TabDragState | null) => void>();
+
+export function subscribeTabDrag(fn: (s: TabDragState | null) => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+function emit() {
+  for (const fn of listeners) fn(state);
+}
+
+export function getTabDrag(): TabDragState | null {
+  return state;
+}
+
+export function startTabDrag(path: string, pane: PaneId) {
+  state = { path, pane };
+  emit();
+}
+
+export function endTabDrag() {
+  state = null;
+  emit();
+}
+
+/**
+ * 根据指针位置算出落在哪个投放区。
+ *
+ * 把编辑区按比例切成四块边缘区域，取「离哪条边最近」；
+ * 落在中间（离四边都超过 25%）视为不投放。
+ */
+export function zoneAt(rect: DOMRect, x: number, y: number): SplitSide | null {
+  if (rect.width === 0 || rect.height === 0) return null;
+  if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return null;
+
+  const relX = (x - rect.left) / rect.width;
+  const relY = (y - rect.top) / rect.height;
+  const dist = {
+    left: relX,
+    right: 1 - relX,
+    top: relY,
+    bottom: 1 - relY,
+  } as const;
+
+  const min = Math.min(dist.left, dist.right, dist.top, dist.bottom);
+  if (min > 0.25) return null; // 中间区域不投放
+
+  if (min === dist.left) return "left";
+  if (min === dist.right) return "right";
+  if (min === dist.top) return "top";
+  return "bottom";
+}
 
 export const SPLIT_SIDES: SplitSide[] = ["left", "right", "top", "bottom"];

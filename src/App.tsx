@@ -19,6 +19,8 @@ import { ReadingView } from "@/components/ReadingView";
 import { TabBar } from "@/components/TabBar";
 import { SplitPane } from "@/components/SplitPane";
 import { SplitDropZones } from "@/components/SplitDropZones";
+import { endTabDrag, subscribeTabDrag, zoneAt } from "@/lib/tabDrag";
+import type { SplitSide, TabDragState } from "@/lib/tabDrag";
 import { applySettings, defaultSettings, loadSettings, matchShortcut } from "@/lib/settings";
 import type { Settings } from "@/lib/settings";
 import { useStore } from "@/stores/app";
@@ -40,9 +42,13 @@ export default function App() {
   const imagePreview = useStore((s) => s.imagePreview);
   const splitPath = useStore((s) => s.splitPath);
   const closeSplit = useStore((s) => s.closeSplit);
+  const openInSplit = useStore((s) => s.openInSplit);
+  const moveTabToSplit = useStore((s) => s.moveTabToSplit);
   const splitSide = useStore((s) => s.splitSide);
-  /** 是否正在拖标签页（决定要不要显示投放热区） */
-  const [tabDragging, setTabDragging] = useState(false);
+  /** 正在拖拽的标签（null 表示没有在拖） */
+  const [tabDrag, setTabDrag] = useState<TabDragState | null>(null);
+  /** 当前命中的投放方向 */
+  const [hoverZone, setHoverZone] = useState<SplitSide | null>(null);
   const noteContent = note?.content ?? "";
   const noteDirty = note?.dirty ?? false;
 
@@ -122,22 +128,40 @@ export default function App() {
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, []);
 
-  // 拖标签页时显示分屏投放热区（dragstart 冒泡到 window）
+  // 标签页拖拽：订阅拖拽状态，按指针位置算落点（不依赖浏览器 DnD）
   useEffect(() => {
-    const onStart = (e: DragEvent) => {
-      const el = (e.target as HTMLElement | null)?.closest?.(".tab");
-      if (el) setTabDragging(true);
-    };
-    const onEnd = () => setTabDragging(false);
-    window.addEventListener("dragstart", onStart);
-    window.addEventListener("dragend", onEnd);
-    window.addEventListener("drop", onEnd);
-    return () => {
-      window.removeEventListener("dragstart", onStart);
-      window.removeEventListener("dragend", onEnd);
-      window.removeEventListener("drop", onEnd);
-    };
+    return subscribeTabDrag((s) => {
+      setTabDrag(s);
+      if (!s) setHoverZone(null);
+    });
   }, []);
+
+  useEffect(() => {
+    if (!tabDrag) return;
+    const paneEl = document.querySelector(".pane-area");
+
+    const onMove = (e: MouseEvent) => {
+      if (!paneEl) return;
+      setHoverZone(zoneAt(paneEl.getBoundingClientRect(), e.clientX, e.clientY));
+    };
+    const onUp = (e: MouseEvent) => {
+      const rect = paneEl?.getBoundingClientRect();
+      const zone = rect ? zoneAt(rect, e.clientX, e.clientY) : null;
+      const { path, pane } = tabDrag;
+      endTabDrag();
+      setHoverZone(null);
+      if (!zone) return;
+      if (pane === "side") openInSplit(path, zone);
+      else moveTabToSplit(path, zone);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [tabDrag, openInSplit, moveTabToSplit]);
 
   const getView = useCallback((): EditorView | null => editorRef.current?.view ?? null, []);
 
@@ -326,7 +350,7 @@ export default function App() {
             )}
 
             {/* 热区只在编辑区内，不压住右侧边栏 */}
-            {tabDragging && <SplitDropZones onDropped={() => setTabDragging(false)} />}
+            {tabDrag && <SplitDropZones hover={hoverZone} />}
           </div>
 
           {note && rightOpen && (
