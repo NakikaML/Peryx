@@ -29,6 +29,7 @@ export function Sidebar({ onCreateNote, onCreateFolder, onCollapse, onOpenSettin
   const selected = useStore((s) => s.selectedPath);
   const toggleExpand = useStore((s) => s.toggleExpand);
   const openNote = useStore((s) => s.openNote);
+  const showImage = useStore((s) => s.showImage);
   const setSidebarOpen = useStore((s) => s.setSidebarOpen);
 
   const recentVaults = useStore((s) => s.recentVaults);
@@ -211,6 +212,7 @@ export function Sidebar({ onCreateNote, onCreateFolder, onCollapse, onOpenSettin
                 selected={selected}
                 onToggle={toggleExpand}
                 onOpen={openNote}
+                onOpenImage={showImage}
               />
             ))}
           </>
@@ -236,6 +238,8 @@ interface ItemProps {
   selected: string | null;
   onToggle: (path: string) => void;
   onOpen: (path: string) => void;
+  /** 点击图片文件：在右侧预览 */
+  onOpenImage: (path: string) => void;
 }
 
 /** 当前正在拖拽的条目（模块级，避免层层传参） */
@@ -253,7 +257,7 @@ function nameOf(path: string): string {
   return i < 0 ? path : path.slice(i + 1);
 }
 
-function TreeItem({ node, depth, childrenMap, expanded, selected, onToggle, onOpen }: ItemProps) {
+function TreeItem({ node, depth, childrenMap, expanded, selected, onToggle, onOpen, onOpenImage }: ItemProps) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [drop, setDrop] = useState<{ after: boolean } | null>(null);
   const [sortMode, setSortMode] = useState<"name" | "manual">("name");
@@ -277,6 +281,9 @@ function TreeItem({ node, depth, childrenMap, expanded, selected, onToggle, onOp
     if (node.isDir) {
       selectFolder(node.path);
       onToggle(node.path);
+    } else if (node.isImage) {
+      // 图片：在右侧预览，不当成笔记打开
+      onOpenImage(node.path);
     } else {
       onOpen(node.path);
     }
@@ -384,7 +391,7 @@ function TreeItem({ node, depth, childrenMap, expanded, selected, onToggle, onOp
         ) : (
           <span className="caret-spacer" />
         )}
-        <span className="tree-icon">{node.isDir ? (isOpen ? "📂" : "📁") : "📄"}</span>
+        <span className={`tree-icon ${node.isImage ? "is-image" : ""}`}>{node.isDir ? (isOpen ? "📂" : "📁") : node.isImage ? "🖼" : "📄"}</span>
         <span className="tree-label">{node.isDir ? node.name : node.name.replace(/\.md$/i, "")}</span>
         <button
           className="tree-more"
@@ -458,6 +465,7 @@ function TreeItem({ node, depth, childrenMap, expanded, selected, onToggle, onOp
               selected={selected}
               onToggle={onToggle}
               onOpen={onOpen}
+              onOpenImage={onOpenImage}
             />
           ))}
         </div>

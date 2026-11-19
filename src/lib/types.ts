@@ -12,6 +12,8 @@ export interface FileNode {
   /** 相对笔记库根目录，使用 `/` 分隔 */
   path: string;
   isDir: boolean;
+  /** 是否图片文件（不是笔记也不是目录） */
+  isImage: boolean;
   /** 修改时间（Unix 毫秒）；目录为 0 */
   modifiedMs: number;
   size: number;

@@ -85,6 +85,17 @@ pub fn resolve_link(target: String, state: State<'_, AppState>) -> CmdResult<Opt
     with_index(&state, |i| i.resolve(&target))
 }
 
+/// 解析 `![[图片.jpg]]` → 库内实际相对路径；找不到返回 null。
+///
+/// 支持只写文件名（文件可在任意子目录，例如 `Picture/`）。
+#[tauri::command]
+pub fn resolve_attachment(
+    target: String,
+    state: State<'_, AppState>,
+) -> CmdResult<Option<String>> {
+    with_index(&state, |i| i.resolve_attachment(&target))
+}
+
 /// 所有笔记元信息（自动补全、双链候选列表用）
 #[tauri::command]
 pub fn list_all_notes(state: State<'_, AppState>) -> CmdResult<Vec<NoteMeta>> {

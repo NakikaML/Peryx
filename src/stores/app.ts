@@ -50,6 +50,10 @@ interface AppStore {
   selectedIsDir: boolean;
 
   note: OpenNote | null;
+  /** 正在预览的图片（相对路径），null 表示未预览图片 */
+  imagePreview: string | null;
+  /** 打开图片预览（右侧编辑区显示图片） */
+  showImage: (path: string) => void;
   mode: EditorMode;
   /** 侧边栏是否折叠 */
   sidebarOpen: boolean;
@@ -141,6 +145,7 @@ export const useStore = create<AppStore>((set, get) => ({
   selectedPath: null,
   selectedIsDir: false,
   note: null,
+  imagePreview: null,
   mode: "live",
   sidebarOpen: true,
   loadingNote: false,
@@ -174,6 +179,7 @@ export const useStore = create<AppStore>((set, get) => ({
       children: {},
       expanded: {},
       note: null,
+      imagePreview: null,
       selectedPath: null,
       selectedIsDir: false,
     });
@@ -392,6 +398,12 @@ export const useStore = create<AppStore>((set, get) => ({
     }
   },
 
+  showImage(path) {
+    // 切换笔记前先保存未落盘内容
+    const cur = get().note;
+    if (cur?.dirty) void get().save();
+    set({ imagePreview: path, selectedPath: path, selectedIsDir: false, note: null });
+  },
   async openNote(path) {
     // 防御：只允许打开 .md 文件
     if (!/\.md$/i.test(path)) {
@@ -410,6 +422,7 @@ export const useStore = create<AppStore>((set, get) => ({
         note: { path, title: titleOf(path), content, dirty: false },
         selectedPath: path,
         selectedIsDir: false,
+        imagePreview: null,
         loadingNote: false,
       });
       void get().loadLinks(path);

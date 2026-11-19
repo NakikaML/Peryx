@@ -104,6 +104,11 @@ pub struct TagCount {
 #[derive(Default)]
 pub struct NoteIndex {
     pub entries: HashMap<String, NoteEntry>,
+    /// 图片等附件的索引：小写文件名 → 相对路径列表
+    ///
+    /// 用于解析 `![[图片.jpg]]` —— Obsidian 允许只写文件名，
+    /// 文件实际可能在库内任意子目录（比如 `Picture/`）。
+    pub attachments: HashMap<String, Vec<String>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -321,6 +326,19 @@ pub fn stem_of(path: &str) -> &str {
     name.strip_suffix(".md").or_else(|| name.strip_suffix(".MD")).unwrap_or(name)
 }
 
+/// 是否为支持的图片扩展名
+pub fn is_image_ext(ext: &str) -> bool {
+    matches!(
+        ext,
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg" | "avif" | "ico"
+    )
+}
+
+/// 多个同名附件时选路径最短的（通常是最外层、更“正式”的那张）
+fn pick_shortest(paths: &[String]) -> Option<String> {
+    paths.iter().min_by_key(|p| p.len()).cloned()
+}
+
 impl NoteIndex {
     /// 全量扫描整个笔记库并重建索引。
     ///
@@ -346,13 +364,25 @@ impl NoteIndex {
                     .extension()
                     .map(|e| e.eq_ignore_ascii_case("md"))
                     .unwrap_or(false);
-                if !is_md {
-                    continue;
-                }
                 let rel = p
                     .strip_prefix(root)
                     .map(|r| r.to_string_lossy().replace('\\', "/"))
                     .unwrap_or_else(|_| name.clone());
+                if !is_md {
+                    // 非 Markdown：如果是图片就记进附件表，供 `![[图片.jpg]]` 解析
+                    let ext = p
+                        .extension()
+                        .map(|e| e.to_string_lossy().to_lowercase())
+                        .unwrap_or_default();
+                    if is_image_ext(&ext) {
+                        index
+                            .attachments
+                            .entry(name.to_lowercase())
+                            .or_default()
+                            .push(rel);
+                    }
+                    continue;
+                }
                 if let Some(entry) = read_entry(&p, &rel, &meta) {
                     index.entries.insert(rel, entry);
                 }
@@ -439,6 +469,40 @@ impl NoteIndex {
         let key = t.strip_suffix(".md").unwrap_or(t).to_lowercase();
         let map = self.lookup();
         map.get(&key).cloned()
+    }
+
+    /// 把 `![[图片.jpg]]` 的目标解析为库内实际相对路径。
+    ///
+    /// 查找顺序（与 Obsidian 接近）：
+    /// 1. 带目录的相对路径，直接命中
+    /// 2. 只写文件名 → 在全库附件表里按文件名匹配
+    ///    多个同名时取**路径最短**的（通常是最外层那张）
+    pub fn resolve_attachment(&self, target: &str) -> Option<String> {
+        let t = target.trim().trim_start_matches("./");
+        if t.is_empty() {
+            return None;
+        }
+        let lower = t.replace('\\', "/").to_lowercase();
+
+        // 1) 带目录：直接看附件表里有没有完全匹配的
+        if lower.contains('/') {
+            for paths in self.attachments.values() {
+                if let Some(p) = paths.iter().find(|p| p.to_lowercase() == lower) {
+                    return Some(p.clone());
+                }
+            }
+            // 也允许不带目录前缀的写法命中（例如库内 Picture/a.jpg，写作 a.jpg）
+            let base = lower.rsplit('/').next().unwrap_or("");
+            if let Some(paths) = self.attachments.get(base) {
+                return pick_shortest(paths);
+            }
+            return None;
+        }
+
+        // 2) 只写文件名
+        self.attachments
+            .get(&lower)
+            .and_then(|paths| pick_shortest(paths))
     }
 
     pub fn get(&self, path: &str) -> Option<&NoteEntry> {
@@ -1044,6 +1108,100 @@ mod tests {
         let text = "前面 #数学 后面 [[链接]] #数学";
         let out = replace_tag(text, "数学", "代数");
         assert_eq!(out, "前面 #代数 后面 [[链接]] #代数");
+    }
+
+    // ---- 图片附件解析（![[图片.jpg]]）----
+
+    /// 造一个含 Picture/ 子目录的库，复现用户截图里的情况
+    fn vault_with_pictures(tag: &str) -> std::path::PathBuf {
+        let dir = make_vault(tag);
+        fs::create_dir_all(dir.join("Picture")).unwrap();
+        fs::create_dir_all(dir.join("章节/图")).unwrap();
+        fs::write(dir.join("Picture/G-HM-1.1 符号函数图像.jpg"), b"fake").unwrap();
+        fs::write(dir.join("章节/图/G-HM-1.2 取整函数图像.jpg"), b"fake").unwrap();
+        fs::write(dir.join("封面.png"), b"fake").unwrap();
+        dir
+    }
+
+    #[test]
+    fn scan_indexes_images_from_subdirs() {
+        let dir = vault_with_pictures("img_idx");
+        let idx = NoteIndex::scan(&dir);
+        // 图片不应该被当成笔记
+        assert_eq!(idx.entries.len(), 0, "图片不应进入笔记索引");
+        // 但应该在附件表里
+        assert!(idx.attachments.contains_key("g-hm-1.1 符号函数图像.jpg"));
+        assert!(idx.attachments.contains_key("封面.png"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_attachment_by_bare_filename() {
+        let dir = vault_with_pictures("img_bare");
+        let idx = NoteIndex::scan(&dir);
+
+        // 用户只写文件名，文件在 Picture/ 下 —— 这是截图里的场景
+        assert_eq!(
+            idx.resolve_attachment("G-HM-1.1 符号函数图像.jpg").as_deref(),
+            Some("Picture/G-HM-1.1 符号函数图像.jpg")
+        );
+        // 大小写不敏感
+        assert_eq!(
+            idx.resolve_attachment("g-hm-1.1 符号函数图像.JPG").as_deref(),
+            Some("Picture/G-HM-1.1 符号函数图像.jpg")
+        );
+        // 深层子目录同样能找到
+        assert_eq!(
+            idx.resolve_attachment("G-HM-1.2 取整函数图像.jpg").as_deref(),
+            Some("章节/图/G-HM-1.2 取整函数图像.jpg")
+        );
+        // 不存在的返回 None
+        assert_eq!(idx.resolve_attachment("没有这张图.png"), None);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_attachment_with_path_prefix() {
+        let dir = vault_with_pictures("img_path");
+        let idx = NoteIndex::scan(&dir);
+
+        // 带目录的完整相对路径
+        assert_eq!(
+            idx.resolve_attachment("Picture/G-HM-1.1 符号函数图像.jpg").as_deref(),
+            Some("Picture/G-HM-1.1 符号函数图像.jpg")
+        );
+        // 写了目录但目录写错 → 退回按文件名匹配
+        assert_eq!(
+            idx.resolve_attachment("错误目录/封面.png").as_deref(),
+            Some("封面.png")
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_attachment_prefers_shortest_when_duplicated() {
+        let dir = make_vault("img_dup");
+        fs::create_dir_all(dir.join("a")).unwrap();
+        fs::create_dir_all(dir.join("a/b")).unwrap();
+        fs::write(dir.join("dup.png"), b"x").unwrap();
+        fs::write(dir.join("a/b/dup.png"), b"x").unwrap();
+
+        let idx = NoteIndex::scan(&dir);
+        assert_eq!(idx.resolve_attachment("dup.png").as_deref(), Some("dup.png"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn image_ext_whitelist() {
+        assert!(is_image_ext("png"));
+        assert!(is_image_ext("jpg"));
+        assert!(is_image_ext("JPEG".to_lowercase().as_str()));
+        assert!(!is_image_ext("md"));
+        assert!(!is_image_ext("exe"));
+        assert!(!is_image_ext("pdf"));
     }
 
     #[test]

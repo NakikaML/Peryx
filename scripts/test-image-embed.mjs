@@ -86,7 +86,7 @@ async function main() {
   results.push({
     label: "A. 内嵌图片渲染为 data URL 的 img",
     ...imgs,
-    pass: imgs.imgCount === 1 && imgs.allDataUrl && imgs.dimensions[0]?.w > 0,
+    pass: imgs.imgCount === 2 && imgs.allDataUrl && imgs.dimensions.every((d) => d.w > 0),
   });
 
   results.push({

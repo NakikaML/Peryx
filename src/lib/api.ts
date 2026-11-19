@@ -101,6 +101,9 @@ export const api = {
   /** `[[目标]]` → 笔记路径；不存在返回 null */
   resolveLink: (target: string) => invoke<string | null>("resolve_link", { target }),
 
+  /** `![[图片.jpg]]` → 库内实际相对路径（支持只写文件名） */
+  resolveAttachment: (target: string) => invoke<string | null>("resolve_attachment", { target }),
+
   /** 所有笔记元信息（双链补全、标签视图用） */
   listAllNotes: () => invoke<NoteMeta[]>("list_all_notes"),
 

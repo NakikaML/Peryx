@@ -207,11 +207,11 @@ function SidebarMock() {
       ],
       children: {
         "": [
-          { name: "微积分基础.md", path: "微积分基础.md", isDir: false, modifiedMs: 0, size: 900 },
-          { name: "法学", path: "法学", isDir: true, modifiedMs: 0, size: 0 },
+          { name: "微积分基础.md", path: "微积分基础.md", isDir: false, isImage: false, modifiedMs: 0, size: 900 },
+          { name: "法学", path: "法学", isDir: true, isImage: false, modifiedMs: 0, size: 0 },
         ],
         "法学": [
-          { name: "民法典导论.md", path: "法学/民法典导论.md", isDir: false, modifiedMs: 0, size: 50 },
+          { name: "民法典导论.md", path: "法学/民法典导论.md", isDir: false, isImage: false, modifiedMs: 0, size: 50 },
         ],
       },
       expanded: { "法学": true },
@@ -520,7 +520,18 @@ function ImageEmbedPreview() {
         if (cmd === "read_image_data_url") {
           const rel = String(args?.relPath ?? "");
           if (rel.includes("不存在")) throw new Error(`图片不存在：${rel}`);
+          const g = globalThis as unknown as Record<string, unknown>;
+          (g.__RESOLVE_LOG__ = (g.__RESOLVE_LOG__ as string[]) || []).push("read:" + rel);
           return redPng;
+        }
+        if (cmd === "resolve_attachment") {
+          const target = String(args?.target ?? "");
+          const g2 = globalThis as unknown as Record<string, unknown>;
+          (g2.__RESOLVE_LOG__ = (g2.__RESOLVE_LOG__ as string[]) || []).push("resolve:" + target);
+          // 模拟后端：只写文件名也能解析到 Picture/ 子目录
+          if (target.includes("不存在")) return null;
+          if (target.startsWith("assets/")) return target;
+          return "Picture/" + target;
         }
         throw new Error(`未 mock 的命令：${cmd}`);
       },
@@ -532,6 +543,8 @@ function ImageEmbedPreview() {
     "# 图片嵌入测试",
     "",
     "正常图片：![[assets/封面.png]]",
+    "",
+    "只写文件名、文件在 Picture/ 子目录：![[G-HM-1.1 符号函数图像.jpg]]",
     "",
     "不存在的图片：![[assets/不存在.png]]",
     "",
@@ -577,7 +590,7 @@ function ShellPreview() {
       },
       children: {
         "": [
-          { name: "微积分基础.md", path: "微积分基础.md", isDir: false, modifiedMs: 0, size: 10 },
+          { name: "微积分基础.md", path: "微积分基础.md", isDir: false, isImage: false, modifiedMs: 0, size: 10 },
         ],
       },
       backlinks: [],
@@ -647,7 +660,7 @@ function AppPreview() {
       note: { path: "微积分基础.md", title: "微积分基础", content: sample, dirty: false },
       children: {
         "": [
-          { name: "微积分基础.md", path: "微积分基础.md", isDir: false, modifiedMs: 0, size: 10 },
+          { name: "微积分基础.md", path: "微积分基础.md", isDir: false, isImage: false, modifiedMs: 0, size: 10 },
         ],
       },
       backlinks: [],
@@ -659,6 +672,48 @@ function AppPreview() {
       { path: "微积分基础.md", title: "微积分基础", tags: ["数学"], links: [], mtimeMs: 0, size: 10 },
     ]);
     (window as unknown as Record<string, unknown>).__APP_MOCK__ = true;
+  }
+  return <App />;
+}
+
+/** 文件树含图片 + 点击预览的测试页 */
+function TreeImagePreview() {
+  if (!(window as unknown as Record<string, unknown>).__TREEIMG_MOCK__) {
+    const redPng =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
+      invoke: async (cmd: string) => {
+        if (cmd === "read_image_data_url") return redPng;
+        if (cmd === "resolve_attachment") return null;
+        if (cmd === "load_settings") return null;
+        if (cmd === "get_vault") return null;
+        if (cmd === "get_recent_vaults") return [];
+        throw new Error(`未 mock 的命令：${cmd}`);
+      },
+    };
+    useStore.setState({
+      vault: { root: "D:\\Test", name: "Test" },
+      sidebarOpen: true,
+      note: {
+        path: "微积分基础.md",
+        title: "微积分基础",
+        content: "# 微积分基础\n",
+        dirty: false,
+      },
+      children: {
+        "": [
+          { name: "微积分基础.md", path: "微积分基础.md", isDir: false, isImage: false, modifiedMs: 0, size: 10 },
+          { name: "Picture", path: "Picture", isDir: true, isImage: false, modifiedMs: 0, size: 0 },
+          { name: "符号函数图像.jpg", path: "符号函数图像.jpg", isDir: false, isImage: true, modifiedMs: 0, size: 2048 },
+        ],
+        Picture: [],
+      },
+      expanded: { Picture: true },
+      backlinks: [],
+      outlinks: [],
+      tags: [],
+    });
+    (window as unknown as Record<string, unknown>).__TREEIMG_MOCK__ = true;
   }
   return <App />;
 }
@@ -684,6 +739,7 @@ function Preview() {
   if (page === "shell") return <ShellPreview />;
   if (page === "settings") return <SettingsPreview />;
   if (page === "app") return <AppPreview />;
+  if (page === "treeimg") return <TreeImagePreview />;
 
   React.useEffect(() => {
     let cancelled = false;

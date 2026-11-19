@@ -34,8 +34,7 @@ export function getCachedImage(relPath: string): string | null {
   if (failed.has(relPath) || pending.has(relPath)) return null;
 
   pending.add(relPath);
-  void api
-    .readImageDataUrl(relPath)
+  void loadImage(relPath)
     .then((url) => {
       cache.set(relPath, url);
       pending.delete(relPath);
@@ -48,6 +47,25 @@ export function getCachedImage(relPath: string): string | null {
       notify();
     });
   return null;
+}
+
+/**
+ * 读取图片。
+ *
+ * 关键：`![[图片.jpg]]` 通常只写文件名，文件可能在库内任意子目录
+ * （Obsidian 的典型用法：图片统一放 `Picture/`）。
+ * 所以先让后端按文件名在**全库范围内**解析出真实路径，
+ * 解析不到再退回按原样读取（用户写的就是完整相对路径）。
+ */
+async function loadImage(relPath: string): Promise<string> {
+  let resolved = relPath;
+  try {
+    const found = await api.resolveAttachment(relPath);
+    if (found) resolved = found;
+  } catch {
+    /* 解析失败就按原样读 */
+  }
+  return api.readImageDataUrl(resolved);
 }
 
 /** 是否已知加载失败 */
@@ -63,21 +81,15 @@ export function clearImageCache() {
 }
 
 /**
- * 把 `![[目标]]` 里的目标解析为笔记库内的相对路径。
+ * 把 `![[目标]]` 里的目标规整为缓存键。
  *
- * Obsidian 支持只写文件名（`![[截图.png]]`），实际文件可能在任意子目录。
- * 这里按「原样 → 相对当前笔记目录 → assets/」的顺序尝试。
+ * 不再拼接当前笔记目录：`![[图片.jpg]]` 的文件可能在库内任意子目录
+ * （如 `Picture/`），真正的查找交给后端 `resolve_attachment`。
+ * 这里只做轻量清理，保证同一目标得到同一个缓存键。
  */
-export function resolveImagePath(target: string, currentNotePath: string): string {
-  const t = target.trim();
-  if (!t) return t;
-  // 已经带目录的直接用
-  if (t.includes("/")) return t;
-  const dir = currentNotePath.includes("/")
-    ? currentNotePath.slice(0, currentNotePath.lastIndexOf("/"))
-    : "";
-  if (dir) return `${dir}/${t}`;
-  return t;
+export function resolveImagePath(target: string, _currentNotePath: string): string {
+  const t = target.trim().replace(/\\/g, "/");
+  return t.replace(/^\.\//, "");
 }
 
 /** 若图片放在 assets/ 下，作为兜底路径 */

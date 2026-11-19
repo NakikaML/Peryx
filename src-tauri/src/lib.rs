@@ -84,6 +84,7 @@ pub fn run() {
             index_cmd::get_all_tags,
             index_cmd::get_notes_with_tag,
             index_cmd::resolve_link,
+            index_cmd::resolve_attachment,
             index_cmd::list_all_notes,
             index_cmd::get_outlinks,
             index_cmd::rename_tag,

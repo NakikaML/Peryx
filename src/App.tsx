@@ -14,6 +14,7 @@ import { RightSidebar } from "@/components/RightSidebar";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ContentSearch } from "@/components/ContentSearch";
 import { SettingsPanel } from "@/components/SettingsPanel";
+import { ImagePreview } from "@/components/ImagePreview";
 import { applySettings, defaultSettings, loadSettings, matchShortcut } from "@/lib/settings";
 import type { Settings } from "@/lib/settings";
 import { useStore } from "@/stores/app";
@@ -32,6 +33,7 @@ export default function App() {
   const loadingNote = useStore((s) => s.loadingNote);
   const selectedPath = useStore((s) => s.selectedPath);
   const selectedIsDir = useStore((s) => s.selectedIsDir);
+  const imagePreview = useStore((s) => s.imagePreview);
   const noteContent = note?.content ?? "";
   const noteDirty = note?.dirty ?? false;
 
@@ -217,7 +219,9 @@ export default function App() {
 
         <div className="workspace">
           <div className="editor-wrap">
-            {note ? (
+            {imagePreview ? (
+              <ImagePreview path={imagePreview} />
+            ) : note ? (
               <>
                 <div className="note-head">
                   {!hasOwnH1 && <h1 className="note-title">{note.title}</h1>}

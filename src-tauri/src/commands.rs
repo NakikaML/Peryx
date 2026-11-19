@@ -117,6 +117,8 @@ pub struct FileNode {
     pub path: String,
     /// 是否目录
     pub is_dir: bool,
+    /// 是否图片文件（不是笔记也不是目录）
+    pub is_image: bool,
     /// 修改时间（Unix 毫秒），目录为 0
     pub modified_ms: u64,
     /// 文件大小（字节），目录为 0
@@ -479,19 +481,21 @@ pub fn list_dir(rel_path: String, state: State<'_, AppState>) -> CmdResult<Vec<F
             Err(_) => continue,
         };
         let is_dir = meta.is_dir();
-        if !is_dir {
-            let is_md = path
-                .extension()
-                .map(|e| e.eq_ignore_ascii_case("md"))
-                .unwrap_or(false);
-            if !is_md {
-                continue;
-            }
+        let ext = path
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        let is_md = ext == "md";
+        let is_image = !is_dir && IMAGE_EXTS.contains(&ext.as_str());
+        // 只列出目录、Markdown 笔记和图片（其它附件不进目录树，避免噪音）
+        if !is_dir && !is_md && !is_image {
+            continue;
         }
         nodes.push(FileNode {
             name,
             path: rel_to_string(path.strip_prefix(&root).unwrap_or(&path)),
             is_dir,
+            is_image,
             modified_ms: if is_dir { 0 } else { modified_ms(&meta) },
             size: if is_dir { 0 } else { meta.len() },
         });
@@ -1007,6 +1011,7 @@ mod tests {
             name: "法学".into(),
             path: "法学".into(),
             is_dir: true,
+            is_image: false,
             modified_ms: 123,
             size: 456,
         };
@@ -1226,6 +1231,7 @@ mod tests {
             name: name.into(),
             path: name.into(),
             is_dir,
+            is_image: false,
             modified_ms: 0,
             size: 0,
         }
