@@ -10,10 +10,12 @@ use std::sync::Mutex;
 
 use tauri::State;
 
-/// 应用全局状态：当前打开的笔记库根目录。
+/// 应用全局状态：当前打开的笔记库根目录 + 笔记索引。
 #[derive(Default)]
 pub struct AppState {
     pub vault: Mutex<Option<PathBuf>>,
+    /// 笔记索引（双链 / 反链 / 搜索 / 标签的数据源）
+    pub index: std::sync::Arc<std::sync::RwLock<crate::index::NoteIndex>>,
 }
 
 /// 应用配置文件路径（在 `setup` 中初始化）。
@@ -209,10 +211,30 @@ pub fn open_vault(
     drop(guard);
     // 记住这次打开的笔记库（失败不影响打开本身）
     let _ = paths.remember(&root);
+    // 构建索引（失败不阻塞打开，索引可随时重建）
+    rebuild_index_inner(&root, &state);
     Ok(VaultInfo {
         root: root.to_string_lossy().to_string(),
         name,
     })
+}
+
+/// 重建索引的内部实现（打开笔记库、手动刷新时调用）
+pub(crate) fn rebuild_index_inner(root: &Path, state: &AppState) {
+    let started = std::time::Instant::now();
+    let idx = crate::index::NoteIndex::scan(root);
+    let elapsed = started.elapsed().as_millis() as u64;
+    if let Ok(mut guard) = state.index.write() {
+        *guard = idx;
+        let _ = elapsed;
+    }
+}
+
+/// 写文件后增量更新索引中的这一篇
+pub(crate) fn touch_index_file(root: &Path, rel_path: &str, state: &AppState) {
+    if let Ok(mut guard) = state.index.write() {
+        guard.refresh_file(root, rel_path);
+    }
 }
 
 #[tauri::command]
@@ -548,6 +570,10 @@ pub fn read_note(rel_path: String, state: State<'_, AppState>) -> CmdResult<Stri
 }
 
 /// 解码文本：去 BOM，优先 UTF-8，失败则按 GB18030（中文 Windows 常见）回退。
+pub(crate) fn decode_text_public(bytes: &[u8]) -> Option<String> {
+    decode_text(bytes)
+}
+
 fn decode_text(bytes: &[u8]) -> Option<String> {
     let bytes = if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
         &bytes[3..]
@@ -613,7 +639,9 @@ pub fn write_note(rel_path: String, content: String, state: State<'_, AppState>)
     if let Some(parent) = p.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("创建目录失败：{e}"))?;
     }
-    fs::write(&p, content.as_bytes()).map_err(|e| format!("写入失败：{e}"))
+    fs::write(&p, content.as_bytes()).map_err(|e| format!("写入失败：{e}"))?;
+    touch_index_file(&root, &rel_path, &state);
+    Ok(())
 }
 
 /// 新建笔记（若已存在则返回错误，避免覆盖）。
@@ -632,7 +660,9 @@ pub fn create_note(rel_path: String, state: State<'_, AppState>) -> CmdResult<St
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_default();
     fs::write(&p, format!("# {title}\n\n")).map_err(|e| format!("创建失败：{e}"))?;
-    Ok(rel_to_string(p.strip_prefix(&root).unwrap_or(&p)))
+    let rel = rel_to_string(p.strip_prefix(&root).unwrap_or(&p));
+    touch_index_file(&root, &rel, &state);
+    Ok(rel)
 }
 
 /// 新建文件夹。
@@ -660,13 +690,16 @@ pub fn delete_entry(
     }
     if p.is_dir() {
         if recursive {
-            fs::remove_dir_all(&p).map_err(|e| format!("删除失败：{e}"))
+            fs::remove_dir_all(&p).map_err(|e| format!("删除失败：{e}"))?;
         } else {
-            fs::remove_dir(&p).map_err(|e| format!("目录非空：{e}"))
+            fs::remove_dir(&p).map_err(|e| format!("目录非空：{e}"))?;
         }
     } else {
-        fs::remove_file(&p).map_err(|e| format!("删除失败：{e}"))
+        fs::remove_file(&p).map_err(|e| format!("删除失败：{e}"))?;
     }
+    // 删除会影响该路径及其所有子路径，索引直接全量重建（删除不频繁）
+    rebuild_index_inner(&root, &state);
+    Ok(())
 }
 
 /// 重命名（同目录内移动）。返回新的相对路径。
@@ -697,6 +730,8 @@ pub fn rename_entry(
         return Err(format!("已存在同名项：{new_name}"));
     }
     fs::rename(&from, &to).map_err(|e| format!("重命名失败：{e}"))?;
+    // 重命名 = 旧路径消失 + 新路径出现；重命名后可能整目录变化，直接重建索引
+    rebuild_index_inner(&root, &state);
     Ok(rel_to_string(to.strip_prefix(&root).unwrap_or(&to)))
 }
 

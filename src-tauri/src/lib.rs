@@ -1,4 +1,6 @@
 mod commands;
+mod index;
+mod index_cmd;
 
 use commands::{AppPaths, AppState};
 use std::path::PathBuf;
@@ -70,6 +72,17 @@ pub fn run() {
             commands::rename_entry,
             commands::save_attachment,
             commands::reveal_vault,
+            // ---- v0.2 索引 / 搜索 / 双链 / 标签 ----
+            index_cmd::rebuild_index,
+            index_cmd::index_stats,
+            index_cmd::search_titles,
+            index_cmd::search_content,
+            index_cmd::get_backlinks,
+            index_cmd::get_all_tags,
+            index_cmd::get_notes_with_tag,
+            index_cmd::resolve_link,
+            index_cmd::list_all_notes,
+            index_cmd::get_outlinks,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
