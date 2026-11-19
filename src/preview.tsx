@@ -718,6 +718,69 @@ function TreeImagePreview() {
   return <App />;
 }
 
+/**
+ * 光标能否点进被装饰区间内部（atomicRanges 过宽的回归测试）
+ */
+function CaretPreview() {
+  const sample = [
+    "# 光标测试",
+    "",
+    "这段有**加粗文字**在这里",
+    "",
+    "嵌入图片：![[图片.png]]",
+    "",
+    "双链：[[双链目标]] 结束",
+    "",
+  ].join("\n");
+
+  if (!(window as unknown as Record<string, unknown>).__CARET_MOCK__) {
+    const redPng =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
+      invoke: async (cmd: string) => {
+        if (cmd === "read_image_data_url") return redPng;
+        if (cmd === "resolve_attachment") return "图片.png";
+        if (cmd === "load_settings") return null;
+        if (cmd === "get_vault") return null;
+        if (cmd === "get_recent_vaults") return [];
+        throw new Error(`未 mock 的命令：${cmd}`);
+      },
+    };
+    useStore.setState({
+      vault: { root: "D:\\Test", name: "Test" },
+      sidebarOpen: true,
+      note: { path: "光标测试.md", title: "光标测试", content: sample, dirty: false },
+      children: {
+        "": [
+          { name: "光标测试.md", path: "光标测试.md", isDir: false, isImage: false, modifiedMs: 0, size: 10 },
+        ],
+      },
+      backlinks: [],
+      outlinks: [],
+      tags: [],
+    });
+    setLinkIndex([
+      { path: "双链目标.md", title: "双链目标", tags: [], links: [], mtimeMs: 0, size: 5 },
+    ]);
+    (window as unknown as Record<string, unknown>).__CARET_MOCK__ = true;
+  }
+
+  // 测试脚本需要一个拿到 EditorView 的入口
+  React.useEffect(() => {
+    const timer = window.setInterval(() => {
+      const el = document.querySelector(".cm-editor");
+      if (!el) return;
+      const v = EditorView.findFromDOM(el as HTMLElement);
+      if (!v) return;
+      (window as unknown as Record<string, unknown>).__EDITOR_HANDLE__ = { view: v };
+      window.clearInterval(timer);
+    }, 200);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return <App />;
+}
+
 function Preview() {
   const query = new URLSearchParams(location.search);
   const page = query.get("page");
@@ -740,6 +803,7 @@ function Preview() {
   if (page === "settings") return <SettingsPreview />;
   if (page === "app") return <AppPreview />;
   if (page === "treeimg") return <TreeImagePreview />;
+  if (page === "caret") return <CaretPreview />;
 
   React.useEffect(() => {
     let cancelled = false;

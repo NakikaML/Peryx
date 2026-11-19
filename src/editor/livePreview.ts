@@ -479,6 +479,7 @@ class EmbedImageWidget extends WidgetType {
   toDOM(): HTMLElement {
     const wrap = document.createElement("span");
     wrap.className = "cm-embed";
+    wrap.dataset.embedFrom = String(this.from);
 
     if (this.state === "loaded") {
       const url = getCachedImage(this.resolved);
@@ -1159,6 +1160,25 @@ export function registerWikiActions(actions: WikiActions) {
 }
 
 /**
+ * 点击 `![[图片]]` 时，直接把光标放到 `![[` 之后，
+ * 省得用户先点一下展开、再点一下定位。
+ */
+const embedClickHandler = EditorView.domEventHandlers({
+  mousedown(event, view) {
+    const el = (event.target as HTMLElement | null)?.closest?.(".cm-embed") as HTMLElement | null;
+    if (!el) return false;
+    const from = Number(el.dataset.embedFrom);
+    if (!Number.isFinite(from)) return false;
+    event.preventDefault();
+    // 落在 `![[` 之后：`![[` 占 3 个字符
+    const pos = Math.min(from + 3, view.state.doc.length);
+    view.dispatch({ selection: { anchor: pos }, scrollIntoView: true });
+    view.focus();
+    return true;
+  },
+});
+
+/**
  * 双链点击处理器。
  *
  * 用编辑器级 `domEventHandlers` 而不是 widget 内 `addEventListener`：
@@ -1168,7 +1188,6 @@ export function registerWikiActions(actions: WikiActions) {
 const wikiLinkHandler = EditorView.domEventHandlers({
   mousedown(event, view) {
     const target = event.target as HTMLElement | null;
-
     // 点击 #标签 → 按标签筛选（不需要 Ctrl）
     const tagEl = target?.closest?.(".cm-tag") as HTMLElement | null;
     if (tagEl) {
@@ -1211,7 +1230,6 @@ const wikiLinkHandler = EditorView.domEventHandlers({
 // ---------------------------------------------------------------------------
 // StateField
 // ---------------------------------------------------------------------------
-
 /** 光标所在行是否变化 */
 function selectionLineChanged(tr: Transaction): boolean {
   if (!tr.selection) return false;
@@ -1235,12 +1253,42 @@ export const livePreviewField = StateField.define<DecorationSet>({
   provide: (f) => EditorView.decorations.from(f),
 });
 
+/**
+ * 只有「替换成 widget」的区间才算原子区间。
+ *
+ * 坑：CodeMirror 的 `atomicRanges` **不区分装饰类型**，
+ * 把整个装饰集丢进去的话，所有 mark（加粗、标签、以及
+ * 「光标行展开后显示源码」的 mark）都会变成原子区间，
+ * 结果光标只能落在它们两边，点不进 `![[图片]]` / `[[双链]]`
+ * 的源码内部去改名字。
+ */
+function collectAtomic(set: DecorationSet | undefined): DecorationSet {
+  if (!set) return Decoration.none;
+  const builder = new RangeSetBuilder<Decoration>();
+  const iter = set.iter();
+  while (iter.value) {
+    // replace 装饰会把内容换成 widget，确实没有可点击的文字，才算原子
+    if (iter.value.spec.widget) builder.add(iter.from, iter.to, iter.value);
+    iter.next();
+  }
+  return builder.finish();
+}
+
+const atomicRangesField = StateField.define<DecorationSet>({
+  create(state) {
+    return collectAtomic(state.field(livePreviewField, false));
+  },
+  update(_deco, tr) {
+    return collectAtomic(tr.state.field(livePreviewField, false));
+  },
+});
+
 export const livePreview: Extension = [
   livePreviewEnabled,
   livePreviewField,
+  atomicRangesField,
   taskCheckboxHandler,
   wikiLinkHandler,
-  EditorView.atomicRanges.of(
-    (view) => view.state.field(livePreviewField, false) ?? Decoration.none,
-  ),
+  embedClickHandler,
+  EditorView.atomicRanges.of((view) => view.state.field(atomicRangesField, false) ?? Decoration.none),
 ];
