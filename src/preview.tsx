@@ -995,6 +995,37 @@ function CalloutLivePreview() {
   return <App />;
 }
 
+/** 脚注示例 */
+const FOOTNOTE_SAMPLE = [
+  "# 脚注测试",
+  "",
+  "正文里引用一个脚注[^1]，还有第二个[^2]，未定义的保持原样[^nope]。",
+  "",
+  "再来一次第一个[^1]。",
+  "",
+  "[^1]: 第一个脚注的内容。",
+  "[^2]: 第二个脚注，比较长，",
+  "  可以续行。",
+  "",
+  "正文结束。",
+  ...Array.from({ length: 40 }, (_, i) => `第 ${i + 1} 段填充内容，用来撑高页面产生滚动。`),
+  "",
+].join("\n");
+
+/** 阅读模式下的脚注 */
+function FootnotePreview() {
+  seedCalloutStore("read", "__FN_MOCK__");
+  if (!(window as unknown as Record<string, unknown>).__FN_SEEDED__) {
+    useStore.setState({
+      note: { path: "脚注测试.md", title: "脚注测试", content: FOOTNOTE_SAMPLE, dirty: false },
+    });
+    (window as unknown as Record<string, unknown>).__FN_SEEDED__ = true;
+  }
+  return <App />;
+}
+
+
+
 function Preview() {
   const query = new URLSearchParams(location.search);
   const page = query.get("page");
@@ -1022,6 +1053,7 @@ function Preview() {
   if (page === "reading") return <ReadingModePreview />;
   if (page === "callout-read") return <CalloutReadPreview />;
   if (page === "callout-live") return <CalloutLivePreview />;
+  if (page === "footnote") return <FootnotePreview />;
 
   React.useEffect(() => {
     let cancelled = false;

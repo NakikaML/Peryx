@@ -1947,6 +1947,68 @@ button.link-item:hover {
 .cm-callout-question { border-left-color: var(--callout-question); }
 .cm-callout-example { border-left-color: var(--callout-example); }
 
+/* ===== 脚注 ===== */
+
+.footnote-ref {
+  vertical-align: super;
+  font-size: 0.75em;
+  line-height: 0;
+}
+
+.footnote-ref a {
+  text-decoration: none;
+  padding: 0 2px;
+  border-radius: 3px;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.footnote-ref a:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.footnotes-sep {
+  margin: 2.4em 0 1em;
+  border: none;
+  border-top: 1px solid var(--border-strong);
+}
+
+.footnotes {
+  font-size: 0.9em;
+  color: var(--fg-muted);
+  padding-left: 1.4em;
+}
+
+.footnotes li {
+  margin: 0.4em 0;
+  line-height: 1.7;
+}
+
+.footnote-num {
+  color: var(--accent);
+  font-weight: 600;
+  margin-right: 2px;
+}
+
+.footnote-back {
+  text-decoration: none;
+  margin-left: 4px;
+  opacity: 0.5;
+}
+
+.footnote-back:hover {
+  opacity: 1;
+}
+
+/* 脚注高亮（点击后闪一下，帮助定位） */
+.footnotes li:target,
+.footnotes li.footnote-flash {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: 5px;
+  transition: background 0.3s;
+}
+
 /* ---- 拖拽排序 ---- */
 
 .tree-item.dragging {

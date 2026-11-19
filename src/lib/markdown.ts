@@ -225,7 +225,132 @@ function calloutPlugin(md: MarkdownItInstance): void {
   });
 }
 
-/** 大纲锚点：给标题加上 id，供大纲面板跳转 */function headingAnchorPlugin(md: MarkdownItInstance): void {
+// ---------------------------------------------------------------------------
+// 脚注（`文字[^1]` + `[^1]: 解释`）
+// ---------------------------------------------------------------------------
+
+/**
+ * 脚注实现（不引额外依赖）：
+ *
+ * 1. 预处理阶段把 `[^id]: 内容` 的定义行从正文里摘掉，存进 env
+ * 2. 把正文里的 `[^id]` 换成上标链接
+ * 3. 全文渲染完后，在末尾追加脚注区
+ *
+ * 与 Obsidian 一致：脚注区固定在文末，按**出现顺序**编号。
+ */
+function footnotePlugin(md: MarkdownItInstance): void {
+  // 必须放在 block 解析**之前**：markdown-it 会把 `[^1]: 内容`
+  // 当成链接引用定义直接吃掉，事后再改 token 已经来不及。
+  md.core.ruler.before("block", "peryx_footnote_defs", (state) => {
+    const defs = new Map<string, string>();
+    const lines = state.src.split("\n");
+    const kept: string[] = [];
+    const defRe = /^\[\^([^\]\s]+)\]:\s?(.*)$/;
+
+    for (let i = 0; i < lines.length; i++) {
+      const m = defRe.exec(lines[i]);
+      if (!m) {
+        kept.push(lines[i]);
+        continue;
+      }
+      // 定义可以续行（缩进 2 空格以上）
+      let body = m[2];
+      while (i + 1 < lines.length && /^\s{2,}\S/.test(lines[i + 1])) {
+        i++;
+        body += "\n" + lines[i].trim();
+      }
+      defs.set(m[1], body);
+      kept.push(""); // 占位，保持后续行号不变
+    }
+
+    if (defs.size === 0) return true;
+    state.src = kept.join("\n");
+    (state.env as Record<string, unknown>).footnotes = defs;
+    return true;
+  });
+
+  md.core.ruler.after("inline", "peryx_footnote_refs", (state) => {
+    const defs = (state.env as Record<string, unknown>).footnotes as
+      | Map<string, string>
+      | undefined;
+    if (!defs || defs.size === 0) return true;
+
+    const order: string[] = [];
+    const numberOf = (id: string): number => {
+      let idx = order.indexOf(id);
+      if (idx < 0) {
+        order.push(id);
+        idx = order.length - 1;
+      }
+      return idx + 1;
+    };
+
+    for (const tok of state.tokens) {
+      if (tok.type !== "inline" || !tok.children) continue;
+      const next: typeof tok.children = [];
+      for (const child of tok.children) {
+        if (child.type !== "text" || !child.content.includes("[^")) {
+          next.push(child);
+          continue;
+        }
+        const re = /\[\^([^\]\s]+)\]/g;
+        let last = 0;
+        let m: RegExpExecArray | null;
+        let any = false;
+        while ((m = re.exec(child.content))) {
+          const id = m[1];
+          if (!defs.has(id)) continue; // 没定义的当普通文本
+          any = true;
+          if (m.index > last) {
+            const t = new state.Token("text", "", 0);
+            t.content = child.content.slice(last, m.index);
+            next.push(t);
+          }
+          const n = numberOf(id);
+          const sup = new state.Token("html_inline", "", 0);
+          sup.content = `<sup class="footnote-ref"><a href="#fn-${escapeHtml(
+            id,
+          )}" id="fnref-${escapeHtml(id)}" data-footnote="${escapeHtml(id)}">[${n}]</a></sup>`;
+          next.push(sup);
+          last = m.index + m[0].length;
+        }
+        if (!any) {
+          next.push(child);
+          continue;
+        }
+        if (last < child.content.length) {
+          const t = new state.Token("text", "", 0);
+          t.content = child.content.slice(last);
+          next.push(t);
+        }
+      }
+      tok.children = next;
+    }
+
+    if (order.length > 0) {
+      const items = order
+        .map((id, i) => {
+          const body = defs.get(id) ?? "";
+          return `<li id="fn-${escapeHtml(id)}"><span class="footnote-num">${
+            i + 1
+          }.</span> <span class="footnote-body">${escapeHtml(body).replace(
+            /\n/g,
+            "<br>",
+          )}</span> <a class="footnote-back" href="#fnref-${escapeHtml(
+            id,
+          )}" data-footnote-back="${escapeHtml(id)}">↩</a></li>`;
+        })
+        .join("\n");
+      const tail = new state.Token("html_block", "", 0);
+      tail.content = `<hr class="footnotes-sep" />\n<ol class="footnotes">\n${items}\n</ol>\n`;
+      state.tokens.push(tail);
+    }
+    return true;
+  });
+}
+
+/** 大纲锚点：给标题加上 id，供大纲面板跳转 */
+function headingAnchorPlugin(md: MarkdownItInstance): void {
   md.core.ruler.push("peryx_heading_anchor", (state) => {
     let idx = 0;
     for (const t of state.tokens) {
@@ -277,6 +402,7 @@ export function getMarkdown(): MarkdownItInstance {
 
   taskListPlugin(md);
   calloutPlugin(md);
+  footnotePlugin(md);
   headingAnchorPlugin(md);
 
   // 外部链接在新窗口打开

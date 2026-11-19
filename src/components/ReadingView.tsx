@@ -9,7 +9,7 @@
  * `[[双链]]`、`![[图片]]`、`#标签`。
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { renderMarkdown } from "@/lib/markdown";
 import { api } from "@/lib/api";
 import { getCachedImage, onImageLoaded, resolveImagePath } from "@/lib/imageCache";
@@ -77,6 +77,7 @@ export function ReadingView({
   onRequestEdit,
 }: Props) {
   const [imgUrls, setImgUrls] = useState<Record<string, string | null>>({});
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
   const { text, images, links } = useMemo(() => normalizeOwnSyntax(source), [source]);
 
@@ -158,9 +159,27 @@ export function ReadingView({
     return applyTags(out);
   }, [text, images, links, imgUrls, docPath]);
 
-  /** 点击委托：双链 / 标签 */
+  /** 点击委托：双链 / 标签 / 脚注 */
   const onClick = (e: React.MouseEvent) => {
     const el = e.target as HTMLElement;
+
+    // 脚注：文内上标跳到文末，文末 ↩ 跳回原处
+    const fnRef = el.closest(".footnote-ref a") as HTMLElement | null;
+    if (fnRef) {
+      e.preventDefault();
+      const id = fnRef.dataset.footnote ?? "";
+      const target = rootRef.current?.querySelector(`#fn-${cssEscape(id)}`);
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    const fnBack = el.closest(".footnote-back") as HTMLElement | null;
+    if (fnBack) {
+      e.preventDefault();
+      const id = fnBack.dataset.footnoteBack ?? "";
+      const target = rootRef.current?.querySelector(`#fnref-${cssEscape(id)}`);
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
 
     const linkEl = el.closest("[data-link]") as HTMLElement | null;
     if (linkEl) {
@@ -186,9 +205,19 @@ export function ReadingView({
       onDoubleClick={() => onRequestEdit?.()}
       title="双击回到编辑"
     >
-      <div className="reading-body markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
+      <div
+        ref={rootRef}
+        className="reading-body markdown-body"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
     </div>
   );
+}
+
+/** id 里可能有特殊字符，转义后再用于选择器 */
+function cssEscape(s: string): string {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") return CSS.escape(s);
+  return s.replace(/[^\w-]/g, (c) => `\\${c}`);
 }
 
 function escapeHtml(s: string): string {
