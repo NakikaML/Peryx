@@ -24,7 +24,7 @@
 import { syntaxTree } from "@codemirror/language";
 import { Decoration, EditorView, WidgetType } from "@codemirror/view";
 import type { DecorationSet } from "@codemirror/view";
-import { RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
+import { RangeSetBuilder, Range, StateEffect, StateField } from "@codemirror/state";
 import type { EditorState, Extension, Transaction } from "@codemirror/state";
 import { renderKatexHtml, renderInline } from "@/lib/markdown";
 import { linkTargetExists, resolveLinkTarget } from "@/lib/linkCache";
@@ -57,6 +57,36 @@ export const livePreviewEnabled = StateField.define<boolean>({
 // ---------------------------------------------------------------------------
 // Widgets
 // ---------------------------------------------------------------------------
+
+/**
+ * 块级公式（阅读态）：整段 `$$...$$` 换成渲染结果。
+ *
+ * 早期实现是「保留淡色源码 + 下方再放一张预览」，看起来像多了一份
+ * 隐隐约约的灰色公式源码。现在阅读态直接把源码整段替换掉，
+ * 点击渲染结果会切回编辑态（见 blockMathClickHandler）。
+ */
+class BlockMathWidget extends WidgetType {
+  constructor(
+    readonly tex: string,
+    readonly from: number,
+  ) {
+    super();
+  }
+  eq(other: BlockMathWidget): boolean {
+    return other.tex === this.tex && other.from === this.from;
+  }
+  toDOM(): HTMLElement {
+    const wrap = document.createElement("div");
+    wrap.className = "cm-formula-preview cm-block-math";
+    wrap.dataset.mathFrom = String(this.from);
+    wrap.innerHTML = renderKatexHtml(this.tex, true);
+    wrap.title = "点击编辑公式";
+    return wrap;
+  }
+  ignoreEvent(): boolean {
+    return false;
+  }
+}
 
 /** 块级公式渲染预览（插入在源码块下方） */
 class FormulaPreview extends WidgetType {
@@ -621,6 +651,14 @@ function buildDecorations(state: EditorState): DecorationSet {
     if (to > from) pending.push({ from, to, deco });
   };
 
+  /**
+   * 行内代码区间（由第 3 步语法树收集）。
+   * `[[x]]`、`![[x]]`、`$x$` 落在这些区间里时按字面文本处理，不做渲染。
+   */
+  const inlineCodeRanges: Array<[number, number]> = [];
+  const inInlineCode = (pos: number) =>
+    inlineCodeRanges.some(([f, t]) => pos >= f && pos < t);
+
   /** 判断某位置所在行是否有光标（决定是否展开源码） */
   const isActivePos = (pos: number): boolean => {
     const lineNo = doc.lineAt(pos).number;
@@ -634,6 +672,14 @@ function buildDecorations(state: EditorState): DecorationSet {
 
   /** 根据激活状态返回该用的标记装饰 */
   const markDeco = (active: boolean) => (active ? markVisible : markHidden);
+
+  /** 光标（或选区）是否与某个区间相交 —— 块级结构用它判断是否展开 */
+  const isActiveRange = (from: number, to: number): boolean => {
+    for (const r of state.selection.ranges) {
+      if (r.from <= to && r.to >= from) return true;
+    }
+    return false;
+  };
 
   // ---- 1. 逐行块级结构 ----
   let inFence = false;
@@ -778,62 +824,87 @@ function buildDecorations(state: EditorState): DecorationSet {
   }
 
   // ---- 2. 块级公式 $$...$$ ----
+  //
+  // 阅读态（光标不在块内）：整段源码换成渲染结果，不再保留淡色源码。
+  // 编辑态（光标在块内）：显示 `$$...$$` 源码，下方仍保留渲染便于对照。
   {
-    let inFormula = false;
-    let formulaLines: string[] = [];
-    let blockActive = false;
-
-    for (let n = 1; n <= doc.lines; n++) {
+    let n = 1;
+    while (n <= doc.lines) {
       const line = doc.line(n);
       const text = line.text;
-      if (/^\s*(`{3,}|~{3,})/.test(text)) continue;
-      const trimmed = text.trim();
-
-      if (!inFormula && trimmed.startsWith("$$")) {
-        const rest = trimmed.slice(2);
-        const close = rest.lastIndexOf("$$");
-        if (close >= 0) {
-          const tex = rest.slice(0, close).trim();
-          const active = isActivePos(line.from);
-          pushLine(line.from, active ? fenceLineDeco : mathSourceDeco);
-          // 无论是否编辑，都保留下方渲染
-          if (tex) {
-            pending.push({
-              from: line.to,
-              to: line.to,
-              deco: Decoration.widget({ widget: new FormulaPreview(tex), block: true, side: 1 }),
-            });
-          }
-        } else {
-          inFormula = true;
-          formulaLines = [rest];
-          blockActive = isActivePos(line.from);
-          pushLine(line.from, blockActive ? fenceLineDeco : mathSourceDeco);
-        }
+      if (/^\s*(`{3,}|~{3,})/.test(text)) {
+        n++;
         continue;
       }
-      if (inFormula) {
-        blockActive = blockActive || isActivePos(line.from);
-        pushLine(line.from, blockActive ? codeLineDeco : mathSourceDeco);
-        const close = text.indexOf("$$");
-        if (close >= 0) {
-          formulaLines.push(text.slice(0, close));
-          const tex = formulaLines.join("\n").trim();
-          // 无论是否在编辑，都保留下方渲染预览
-          if (tex) {
-            pending.push({
-              from: line.to,
-              to: line.to,
-              deco: Decoration.widget({ widget: new FormulaPreview(tex), block: true, side: 1 }),
-            });
-          }
-          inFormula = false;
-          formulaLines = [];
-          blockActive = false;
-        } else {
-          formulaLines.push(text);
-        }
+      const trimmed = text.trim();
+      if (!trimmed.startsWith("$$")) {
+        n++;
+        continue;
       }
+
+      const rest = trimmed.slice(2);
+      let tex = "";
+      let endLine = n;
+      let closed = false;
+
+      const sameLineClose = rest.lastIndexOf("$$");
+      if (sameLineClose >= 0) {
+        tex = rest.slice(0, sameLineClose).trim();
+        closed = true;
+      } else {
+        const parts: string[] = [rest];
+        let m = n + 1;
+        while (m <= doc.lines) {
+          const t2 = doc.line(m).text;
+          const c2 = t2.indexOf("$$");
+          if (c2 >= 0) {
+            parts.push(t2.slice(0, c2));
+            endLine = m;
+            closed = true;
+            break;
+          }
+          parts.push(t2);
+          endLine = m;
+          m++;
+        }
+        tex = parts.join("\n").trim();
+      }
+
+      // 没闭合 → 当普通文本处理，交给后面的行内逻辑
+      if (!closed) {
+        n++;
+        continue;
+      }
+
+      const from = line.from;
+      const to = doc.line(endLine).to;
+      // 判断光标是否落在整段块内（不能只看起始行）
+      const active = isActiveRange(from, to);
+
+      if (active) {
+        for (let k = n; k <= endLine; k++) pushLine(doc.line(k).from, fenceLineDeco);
+        if (tex) {
+          pending.push({
+            from: to,
+            to,
+            deco: Decoration.widget({ widget: new FormulaPreview(tex), block: true, side: 1 }),
+          });
+        }
+      } else if (tex) {
+        // 阅读态：源码整段被替换，肉眼只剩渲染结果
+        pending.push({
+          from,
+          to,
+          deco: Decoration.replace({
+            widget: new BlockMathWidget(tex, from),
+            block: true,
+          }),
+        });
+      } else {
+        for (let k = n; k <= endLine; k++) pushLine(doc.line(k).from, mathSourceDeco);
+      }
+
+      n = endLine + 1;
     }
   }
 
@@ -872,6 +943,8 @@ function buildDecorations(state: EditorState): DecorationSet {
           const raw = doc.sliceString(from, to);
           const ticks = /^`+/.exec(raw)?.[0].length ?? 1;
           if (to - from <= ticks * 2) return;
+          // 记下区间：里面的 `[[x]]`、`![[x]]`、`$x$` 都按字面文本处理
+          inlineCodeRanges.push([from, to]);
           mark(from, from + ticks, md);
           mark(from + ticks, to - ticks, active ? inlineCodeActiveDeco : inlineCodeDeco);
           mark(to - ticks, to, md);
@@ -951,6 +1024,11 @@ function buildDecorations(state: EditorState): DecorationSet {
       }
       const from = line.from + i;
       const to = line.from + close + 2;
+      // 行内代码里的 `![[x]]` 按字面文本处理
+      if (inInlineCode(from)) {
+        i = close + 2;
+        continue;
+      }
       if (active) {
         // 光标在本行：显示源码，方便改图片名
         mark(from, to, wikiSourceDeco);
@@ -1012,6 +1090,11 @@ function buildDecorations(state: EditorState): DecorationSet {
 
       const from = line.from + i;
       const to = line.from + close + 2;
+      // 行内代码里的 `[[x]]` 按字面文本处理
+      if (inInlineCode(from)) {
+        i = close + 2;
+        continue;
+      }
       if (active) {
         // 光标在本行：显示源码，方便改目标名
         mark(from, to, wikiSourceDeco);
@@ -1094,7 +1177,7 @@ function buildDecorations(state: EditorState): DecorationSet {
         const end = text.indexOf("$", i + 1);
         if (end > i + 1 && text[end + 1] !== "$") {
           const tex = text.slice(i + 1, end);
-          if (tex.trim()) {
+          if (tex.trim() && !inInlineCode(line.from + i)) {
             const from = line.from + i;
             const to = line.from + end + 1;
             if (active) {
@@ -1117,22 +1200,34 @@ function buildDecorations(state: EditorState): DecorationSet {
   }
 
   // ---- 6. 排序 + 去重叠 ----
-  pending.sort((a, b) => a.from - b.from || a.to - b.to);
-  const builder = new RangeSetBuilder<Decoration>();
-  let lastTo = -1;
+  //
+  // 只有 replace（换成 widget）之间、以及 mark 与 replace 之间才算冲突：
+  // widget 覆盖的区间不能再叠别的装饰。
+  //
+  // 但 **mark 之间允许嵌套** —— 例如 `**突发长度 $\le p+1$ 的突发错**`
+  // 里，行内公式的 mark 落在加粗内容内部。早期版本的规则是
+  // 「起点在上一段结束之前就丢弃」，结果内部的公式被整段丢掉，
+  // 表现为「加粗里的公式不渲染」。
+  // 注意：这里不能用 RangeSetBuilder —— 它要求严格有序且不支持嵌套，
+  // 一旦出现嵌套的 mark 就抛 "Ranges must be added sorted"。
+  // 改用 Decoration.set(ranges, true)，把排序交给 CodeMirror。
+  const ranges: Range<Decoration>[] = [];
+  /** 已接受的 replace 区间 */
+  const replaced: Array<[number, number]> = [];
   let lastZeroFrom = -1;
   for (const p of pending) {
     if (p.from === p.to) {
       if (p.from === lastZeroFrom) continue;
       lastZeroFrom = p.from;
     }
-    if (p.from < lastTo) {
-      continue;
-    }
-    builder.add(p.from, p.to, p.deco);
-    lastTo = p.to;
+    const isReplace = !!p.deco.spec.widget;
+    // 与已生成的 widget 重叠 → 丢弃（widget 优先，保持已有一致性）
+    const hitsWidget = replaced.some(([f, t]) => p.from < t && p.to > f);
+    if (hitsWidget) continue;
+    if (isReplace) replaced.push([p.from, p.to]);
+    ranges.push(p.deco.range(p.from, p.to));
   }
-  return builder.finish();
+  return Decoration.set(ranges, true);
 }
 
 /** 有序列表序号：正常显示但稍作弱化 */
@@ -1172,6 +1267,26 @@ const embedClickHandler = EditorView.domEventHandlers({
     event.preventDefault();
     // 落在 `![[` 之后：`![[` 占 3 个字符
     const pos = Math.min(from + 3, view.state.doc.length);
+    view.dispatch({ selection: { anchor: pos }, scrollIntoView: true });
+    view.focus();
+    return true;
+  },
+});
+
+/**
+ * 点击块级公式的渲染结果 → 切回编辑态（显示 `$$...$$` 源码）。
+ */
+const blockMathClickHandler = EditorView.domEventHandlers({
+  mousedown(event, view) {
+    const el = (event.target as HTMLElement | null)?.closest?.(
+      ".cm-block-math",
+    ) as HTMLElement | null;
+    if (!el) return false;
+    const from = Number(el.dataset.mathFrom);
+    if (!Number.isFinite(from)) return false;
+    event.preventDefault();
+    // 放到 `$$` 之后
+    const pos = Math.min(from + 2, view.state.doc.length);
     view.dispatch({ selection: { anchor: pos }, scrollIntoView: true });
     view.focus();
     return true;
@@ -1290,5 +1405,6 @@ export const livePreview: Extension = [
   taskCheckboxHandler,
   wikiLinkHandler,
   embedClickHandler,
+  blockMathClickHandler,
   EditorView.atomicRanges.of((view) => view.state.field(atomicRangesField, false) ?? Decoration.none),
 ];

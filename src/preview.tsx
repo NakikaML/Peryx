@@ -781,6 +781,70 @@ function CaretPreview() {
   return <App />;
 }
 
+/**
+ * 加粗里的行内公式 + 块级公式阅读态
+ */
+function MathBoldPreview() {
+  const sample = [
+    "# 公式测试",
+    "",
+    "这种编码方式**能纠正 1 位错**，并能检出奇数位错、**突发长度 $\\le p+1$ 的突发错**以及很大一部分偶数位错。",
+    "",
+    "单行块公式：",
+    "",
+    "$$ \\eta = \\frac{pq}{(p+1)(q+1)} $$",
+    "",
+    "多行块公式：",
+    "",
+    "$$",
+    "E = mc^2",
+    "$$",
+    "",
+    "行内公式对照：这里有 $x^2+y^2$ 一个。",
+    "",
+  ].join("\n");
+
+  if (!(window as unknown as Record<string, unknown>).__MATHBOLD_MOCK__) {
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
+      invoke: async (cmd: string) => {
+        if (cmd === "load_settings") return null;
+        if (cmd === "get_vault") return null;
+        if (cmd === "get_recent_vaults") return [];
+        throw new Error(`未 mock 的命令：${cmd}`);
+      },
+    };
+    useStore.setState({
+      vault: { root: "D:\\Test", name: "Test" },
+      sidebarOpen: true,
+      note: { path: "公式测试.md", title: "公式测试", content: sample, dirty: false },
+      children: {
+        "": [
+          { name: "公式测试.md", path: "公式测试.md", isDir: false, isImage: false, modifiedMs: 0, size: 10 },
+        ],
+      },
+      backlinks: [],
+      outlinks: [],
+      tags: [],
+    });
+    setLinkIndex([]);
+    (window as unknown as Record<string, unknown>).__MATHBOLD_MOCK__ = true;
+  }
+
+  React.useEffect(() => {
+    const timer = window.setInterval(() => {
+      const el = document.querySelector(".cm-editor");
+      if (!el) return;
+      const v = EditorView.findFromDOM(el as HTMLElement);
+      if (!v) return;
+      (window as unknown as Record<string, unknown>).__EDITOR_HANDLE__ = { view: v };
+      window.clearInterval(timer);
+    }, 200);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return <App />;
+}
+
 function Preview() {
   const query = new URLSearchParams(location.search);
   const page = query.get("page");
@@ -804,6 +868,7 @@ function Preview() {
   if (page === "app") return <AppPreview />;
   if (page === "treeimg") return <TreeImagePreview />;
   if (page === "caret") return <CaretPreview />;
+  if (page === "mathbold") return <MathBoldPreview />;
 
   React.useEffect(() => {
     let cancelled = false;
