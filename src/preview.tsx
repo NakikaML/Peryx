@@ -1108,6 +1108,51 @@ function OutlinePreview() {
   return <App />;
 }
 
+/** 标签页测试：三篇笔记 */
+function TabsPreview() {
+  seedCalloutStore("live", "__TABS_MOCK__");
+  if (!(window as unknown as Record<string, unknown>).__TABS_SEEDED__) {
+    const g = window as unknown as Record<string, unknown>;
+    g.__TAURI_INTERNALS__ = {
+      invoke: async (cmd: string, args: Record<string, unknown>) => {
+        if (cmd === "load_settings") return null;
+        if (cmd === "get_vault") return null;
+        if (cmd === "get_recent_vaults") return [];
+        if (cmd === "read_note") {
+          const rel = String(args?.relPath ?? "");
+          return `# ${rel.replace(/\.md$/, "")}\n\n内容。\n`;
+        }
+        if (cmd === "get_backlinks") return [];
+        if (cmd === "get_outlinks") return [];
+        if (cmd === "write_note") return null;
+        throw new Error(`未 mock 的命令：${cmd}`);
+      },
+    };
+    const node = (title: string) => ({
+      name: `${title}.md`,
+      path: `${title}.md`,
+      isDir: false,
+      isImage: false,
+      modifiedMs: 0,
+      size: 10,
+    });
+    useStore.setState({
+      vault: { root: "D:\\Test", name: "Test" },
+      sidebarOpen: true,
+      mode: "live",
+      note: null,
+      tabs: [],
+      children: { "": [node("笔记A"), node("笔记B"), node("笔记C")] },
+      backlinks: [],
+      outlinks: [],
+      tags: [],
+    });
+    setLinkIndex([]);
+    g.__TABS_SEEDED__ = true;
+  }
+  return <App />;
+}
+
 function Preview() {
   const query = new URLSearchParams(location.search);
   const page = query.get("page");
@@ -1139,6 +1184,7 @@ function Preview() {
   if (page === "mermaid") return <MermaidPreview />;
   if (page === "mermaid-live") return <MermaidLivePreview />;
   if (page === "outline") return <OutlinePreview />;
+  if (page === "tabs") return <TabsPreview />;
 
   React.useEffect(() => {
     let cancelled = false;

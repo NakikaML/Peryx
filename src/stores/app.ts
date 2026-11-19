@@ -12,6 +12,7 @@ import type {
   LinkRef,
   NoteMeta,
   OpenNote,
+  NoteTab,
   TagCount,
   VaultInfo,
 } from "@/lib/types";
@@ -50,6 +51,8 @@ interface AppStore {
   selectedIsDir: boolean;
 
   note: OpenNote | null;
+  /** 已打开的标签页（最近打开的在后） */
+  tabs: NoteTab[];
   /** 正在预览的图片（相对路径），null 表示未预览图片 */
   imagePreview: string | null;
   /** 打开图片预览（右侧编辑区显示图片） */
@@ -106,6 +109,12 @@ interface AppStore {
   renameTag: (oldTag: string, newTag: string) => Promise<void>;
 
   openNote: (path: string) => Promise<void>;
+  /** 打开笔记并强制新开标签页（即使已在其它标签打开也切换过去） */
+  openNoteInTab: (path: string) => Promise<void>;
+  /** 关闭标签页（关闭当前标签时自动切到相邻标签） */
+  closeTab: (path: string) => Promise<void>;
+  /** 关闭其它所有标签页 */
+  closeOtherTabs: (path: string) => Promise<void>;
   /** 在目录树中选中文件夹（不读取内容） */
   selectFolder: (dirPath: string) => void;
   /** 编辑时更新内容（标记未保存） */
@@ -145,6 +154,7 @@ export const useStore = create<AppStore>((set, get) => ({
   selectedPath: null,
   selectedIsDir: false,
   note: null,
+  tabs: [],
   imagePreview: null,
   mode: "live",
   sidebarOpen: true,
@@ -179,6 +189,7 @@ export const useStore = create<AppStore>((set, get) => ({
       children: {},
       expanded: {},
       note: null,
+      tabs: [],
       imagePreview: null,
       selectedPath: null,
       selectedIsDir: false,
@@ -418,8 +429,15 @@ export const useStore = create<AppStore>((set, get) => ({
     set({ loadingNote: true });
     try {
       const content = await api.readNote(path);
+      const title = titleOf(path);
+      // 保证这个笔记在标签栏里有一席之地
+      const tabs = get().tabs;
+      const nextTabs = tabs.some((t) => t.path === path)
+        ? tabs
+        : [...tabs, { path, title }];
       set({
-        note: { path, title: titleOf(path), content, dirty: false },
+        note: { path, title, content, dirty: false },
+        tabs: nextTabs,
         selectedPath: path,
         selectedIsDir: false,
         imagePreview: null,
@@ -430,6 +448,46 @@ export const useStore = create<AppStore>((set, get) => ({
       set({ loadingNote: false });
       get().toast(errText(e), "error");
     }
+  },
+
+  /**
+   * 打开笔记（已在标签里就切过去）。
+   * 与 openNote 的区别：即使当前就是它也会重新读取（用于「重新加载」）。
+   */
+  async openNoteInTab(path) {
+    if (get().note?.path === path) {
+      set({ note: null });
+    }
+    await get().openNote(path);
+  },
+
+  /** 关闭一个标签页；关的是当前标签时自动切到相邻的 */
+  async closeTab(path) {
+    const tabs = get().tabs;
+    const idx = tabs.findIndex((t) => t.path === path);
+    if (idx < 0) return;
+    const rest = tabs.filter((t) => t.path !== path);
+
+    if (get().note?.path !== path) {
+      set({ tabs: rest });
+      return;
+    }
+    // 关的是当前笔记：先保存，再切到右边（没有就切左边）
+    if (get().note?.dirty) await get().save();
+    const next = rest[idx] ?? rest[idx - 1] ?? null;
+    set({ tabs: rest, note: null, imagePreview: null });
+    if (next) {
+      await get().openNote(next.path);
+    } else {
+      set({ selectedPath: null, selectedIsDir: false });
+    }
+  },
+
+  /** 只留下指定标签页 */
+  async closeOtherTabs(path) {
+    const keep = get().tabs.filter((t) => t.path === path);
+    set({ tabs: keep });
+    if (get().note?.path !== path) await get().openNote(path);
   },
 
   /** 在目录树中选中一个文件夹（只选中，不读取内容） */
@@ -527,6 +585,8 @@ export const useStore = create<AppStore>((set, get) => ({
       await api.deleteEntry(path, true);
       const note = get().note;
       if (note?.path === path) set({ note: null, selectedPath: null });
+      // 删掉的笔记要把它的标签页也移除
+      set({ tabs: get().tabs.filter((t) => t.path !== path) });
       delete get().children[path];
       await get().refresh(dir);
       get().toast("已删除", "success");

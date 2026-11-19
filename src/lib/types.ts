@@ -31,8 +31,13 @@ export interface OpenNote {
   dirty: boolean;
 }
 
-/** 目录树展开状态：key 为目录相对路径 */
-export type ExpandedMap = Record<string, true>;
+/** 标签页 */
+export interface NoteTab {
+  path: string;
+  title: string;
+}
+
+/** 目录树展开状态：key 为目录相对路径 */export type ExpandedMap = Record<string, true>;
 
 /** 目录树的子节点缓存 */
 export type ChildrenMap = Record<string, FileNode[]>;

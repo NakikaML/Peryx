@@ -16,6 +16,7 @@ import { ContentSearch } from "@/components/ContentSearch";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { ImagePreview } from "@/components/ImagePreview";
 import { ReadingView } from "@/components/ReadingView";
+import { TabBar } from "@/components/TabBar";
 import { applySettings, defaultSettings, loadSettings, matchShortcut } from "@/lib/settings";
 import type { Settings } from "@/lib/settings";
 import { useStore } from "@/stores/app";
@@ -222,6 +223,7 @@ export default function App() {
 
         <div className="workspace">
           <div className="editor-wrap">
+            <TabBar />
             {imagePreview ? (
               <ImagePreview path={imagePreview} />
             ) : note ? (
