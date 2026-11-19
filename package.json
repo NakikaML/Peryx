@@ -1,7 +1,7 @@
 {
   "name": "peryx",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Peryx 栖知 - 个性化 Markdown 学习笔记软件",
   "type": "module",
   "scripts": {
@@ -14,7 +14,12 @@
     "test:issues": "node scripts/test-8issues.mjs",
     "test:math": "node scripts/test-twofix.mjs",
     "test:table": "node scripts/test-table-edit.mjs",
-    "test:sort": "node scripts/test-sorting.mjs"
+    "test:sort": "node scripts/test-sorting.mjs",
+    "test:links": "node scripts/test-links.mjs",
+    "test:search": "node scripts/test-search.mjs",
+    "test:wiki": "node scripts/test-wikilink.mjs",
+    "test:complete": "node scripts/test-wikicomplete.mjs",
+    "test:tags": "node scripts/test-tags.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.19.0",
