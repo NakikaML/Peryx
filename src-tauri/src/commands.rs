@@ -842,7 +842,12 @@ const MAX_IMAGE_BYTES: u64 = 32 * 1024 * 1024;
 #[tauri::command]
 pub fn read_image_data_url(rel_path: String, state: State<'_, AppState>) -> CmdResult<String> {
     let root = get_root(&state)?;
-    let p = resolve_in_vault(&root, &rel_path)?;
+    image_data_url_in(&root, &rel_path)
+}
+
+/// `read_image_data_url` 的实际实现（与 Tauri 状态解耦，便于测试）。
+pub fn image_data_url_in(root: &Path, rel_path: &str) -> CmdResult<String> {
+    let p = resolve_in_vault(root, rel_path)?;
     if !p.is_file() {
         return Err(format!("图片不存在：{rel_path}"));
     }
@@ -1171,6 +1176,36 @@ mod tests {
 
     // ---- Base64（图片内嵌用）----
 
+    /// 测试用 Base64 解码，用于验证编码结果能还原原始字节
+    fn base64_decode(s: &str) -> Vec<u8> {
+        fn val(c: u8) -> u32 {
+            match c {
+                b'A'..=b'Z' => (c - b'A') as u32,
+                b'a'..=b'z' => (c - b'a') as u32 + 26,
+                b'0'..=b'9' => (c - b'0') as u32 + 52,
+                b'+' => 62,
+                b'/' => 63,
+                _ => 0,
+            }
+        }
+        let bytes: Vec<u8> = s.bytes().filter(|&c| c != b'=').collect();
+        let mut out = Vec::new();
+        for chunk in bytes.chunks(4) {
+            let mut n = 0u32;
+            for (i, &c) in chunk.iter().enumerate() {
+                n |= val(c) << (18 - 6 * i);
+            }
+            out.push((n >> 16) as u8);
+            if chunk.len() > 2 {
+                out.push((n >> 8) as u8);
+            }
+            if chunk.len() > 3 {
+                out.push(n as u8);
+            }
+        }
+        out
+    }
+
     #[test]
     fn base64_encodes_known_vectors() {
         // RFC 4648 标准测试向量
@@ -1190,6 +1225,54 @@ mod tests {
         let encoded = base64_encode(&bytes);
         assert_eq!(encoded.len(), 344, "256 字节应编码为 344 个字符");
         assert!(encoded.chars().all(|c| c.is_ascii_alphanumeric() || "+/=".contains(c)));
+    }
+
+    // ---- 图片读取为 data URL（端到端）----
+
+    #[test]
+    fn reads_image_from_subdir_as_data_url() {
+        let dir = std::env::temp_dir().join("peryx_imgread");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("Picture")).unwrap();
+        // 1x1 PNG
+        let png: Vec<u8> = vec![
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
+            0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54, 0x78,
+            0xDA, 0x63, 0xFC, 0xCF, 0xC0, 0x50, 0x0F, 0x00, 0x04, 0x85, 0x01, 0x80, 0x84, 0xA9,
+            0x8C, 0x21, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+        ];
+        fs::write(dir.join("Picture").join("符号函数.png"), &png).unwrap();
+
+        // 子目录里的图片能读出 data URL
+        let url = image_data_url_in(&dir, "Picture/符号函数.png").unwrap();
+        assert!(url.starts_with("data:image/png;base64,"), "应为 PNG data URL: {url}");
+        // base64 能还原成原始字节
+        let b64 = url.trim_start_matches("data:image/png;base64,");
+        assert_eq!(base64_decode(b64), png);
+
+        // jpg 的 MIME 正确
+        fs::write(dir.join("Picture").join("a.jpg"), b"abc").unwrap();
+        let jpg = image_data_url_in(&dir, "Picture/a.jpg").unwrap();
+        assert!(jpg.starts_with("data:image/jpeg;base64,"), "{jpg}");
+
+        // 不存在的图片报可读错误
+        let err = image_data_url_in(&dir, "Picture/没有.png").unwrap_err();
+        assert!(err.contains("不存在"), "{err}");
+
+        // 非图片扩展名拒绝
+        fs::write(dir.join("a.txt"), b"x").unwrap();
+        let err = image_data_url_in(&dir, "a.txt").unwrap_err();
+        assert!(err.contains("不是支持的图片格式"), "{err}");
+
+        // 路径越界防护
+        let err = image_data_url_in(&dir, "../../etc/passwd").unwrap_err();
+        assert!(
+            err.contains("不合法") || err.contains("上级目录"),
+            "应拒绝越界路径，实际：{err}"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     // ---- 自然排序 ----

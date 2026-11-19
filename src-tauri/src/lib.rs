@@ -7,6 +7,11 @@ use std::path::PathBuf;
 use tauri::Manager;
 
 /// 启动时恢复上次打开的笔记库（目录不存在则忽略）。
+///
+/// 注意：这里**必须同时构建索引**。
+/// 之前只设置了 vault 路径，导致「启动即恢复」的场景下索引为空，
+/// 表现为双链、反向链接、搜索、标签、`![[图片]]` 全部失效，
+/// 而文件树仍然正常（它直接读磁盘，不经过索引）。
 fn restore_last_vault(paths: &AppPaths, state: &AppState) {
     let text = match std::fs::read_to_string(&paths.config_file) {
         Ok(t) => t,
@@ -21,11 +26,14 @@ fn restore_last_vault(paths: &AppPaths, state: &AppState) {
     if !p.is_dir() {
         return;
     }
-    if let Ok(canon) = std::fs::canonicalize(&p) {
+    let Ok(canon) = std::fs::canonicalize(&p) else { return };
+    {
         if let Ok(mut guard) = state.vault.lock() {
-            *guard = Some(canon);
+            *guard = Some(canon.clone());
         }
     }
+    // 关键：恢复后立即建索引
+    commands::rebuild_index_inner(&canon, state);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -109,7 +117,14 @@ mod tests {
     fn restores_last_vault_from_config() {
         let (dir, paths) = setup("ok");
         let vault = dir.join("myvault");
-        std::fs::create_dir_all(&vault).unwrap();
+        std::fs::create_dir_all(vault.join("Picture")).unwrap();
+        // 放一篇笔记和一张图片，验证恢复后索引真的建好了
+        std::fs::write(
+            vault.join("甲.md"),
+            "# 甲笔记\n\n#数学\n\n![[符号函数.jpg]]\n",
+        )
+        .unwrap();
+        std::fs::write(vault.join("Picture").join("符号函数.jpg"), b"fake").unwrap();
         let canon = std::fs::canonicalize(&vault).unwrap();
 
         let cfg = commands::AppConfig {
@@ -125,6 +140,26 @@ mod tests {
         let opened = state.vault.lock().unwrap().clone();
         assert!(opened.is_some(), "应恢复上次打开的笔记库");
         assert_eq!(opened.unwrap(), canon);
+
+        // 关键回归：恢复笔记库时必须把索引也建好，
+        // 否则双链 / 反链 / 搜索 / 标签 / ![[图片]] 全部失效。
+        let idx = state.index.read().unwrap();
+        assert_eq!(idx.entries.len(), 1, "恢复后笔记索引应已建立");
+        assert!(
+            idx.attachments.contains_key("符号函数.jpg"),
+            "恢复后附件索引应已建立，否则 ![[图片]] 显示不出来"
+        );
+        assert_eq!(
+            idx.resolve_attachment("符号函数.jpg").as_deref(),
+            Some("Picture/符号函数.jpg"),
+            "应能按文件名解析到子目录里的图片"
+        );
+        assert_eq!(
+            idx.entries.get("甲.md").unwrap().meta.tags,
+            vec!["数学".to_string()],
+            "恢复后标签也应可用"
+        );
+        drop(idx);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

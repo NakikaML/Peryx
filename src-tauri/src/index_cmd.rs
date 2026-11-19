@@ -88,12 +88,35 @@ pub fn resolve_link(target: String, state: State<'_, AppState>) -> CmdResult<Opt
 /// 解析 `![[图片.jpg]]` → 库内实际相对路径；找不到返回 null。
 ///
 /// 支持只写文件名（文件可在任意子目录，例如 `Picture/`）。
+///
+/// 兜底：若索引整个是空的（例如某些启动路径没建索引），
+/// 这里会惰性重建一次再查，避免「文件树能看到图片但嵌入显示不出来」。
 #[tauri::command]
 pub fn resolve_attachment(
     target: String,
     state: State<'_, AppState>,
 ) -> CmdResult<Option<String>> {
-    with_index(&state, |i| i.resolve_attachment(&target))
+    let (found, index_empty) = {
+        let guard = state.index.read().map_err(|e| e.to_string())?;
+        let hit = guard.resolve_attachment(&target);
+        let empty = guard.entries.is_empty() && guard.attachments.is_empty();
+        (hit, empty)
+    };
+    if found.is_some() {
+        return Ok(found);
+    }
+    if !index_empty {
+        return Ok(None);
+    }
+    // 索引为空 → 惰性重建后再查一次
+    let root = {
+        let guard = state.vault.lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
+    let Some(root) = root else { return Ok(None) };
+    crate::commands::rebuild_index_inner(&root, &state);
+    let guard = state.index.read().map_err(|e| e.to_string())?;
+    Ok(guard.resolve_attachment(&target))
 }
 
 /// 所有笔记元信息（自动补全、双链候选列表用）
