@@ -16,9 +16,71 @@ import { useStore } from "@/stores/app";
 import { setLinkIndex } from "@/lib/linkCache";
 import { registerWikiActions } from "@/editor/livePreview";
 import { LinksPanel } from "@/components/LinksPanel";
+import { CommandPalette } from "@/components/CommandPalette";
+import { ContentSearch } from "@/components/ContentSearch";
 
 // 调试/自动化测试用：把 store 暴露到 window
 (window as unknown as Record<string, unknown>).__STORE__ = { useStore };
+
+/** 供搜索类预览页使用的 IPC 桩：拦截 search_* 命令返回假数据 */
+const MOCK_NOTES = [
+  { path: "微积分基础.md", title: "微积分基础" },
+  { path: "法学/民法典导论.md", title: "民法典导论" },
+  { path: "C++程序设计基础/CPP-4 函数.md", title: "CPP-4 函数" },
+  { path: "C++程序设计基础/CPP-9 文件操作与重定向.md", title: "CPP-9 文件操作与重定向" },
+  { path: "Python应用开发/基础语法.md", title: "Python 基础语法" },
+];
+
+const MOCK_CONTENT = [
+  {
+    path: "微积分基础.md",
+    title: "微积分基础",
+    line: 5,
+    snippet: "微积分的核心是极限，导数是它的工具",
+    matchStart: 0,
+    matchLen: 3,
+  },
+  {
+    path: "微积分基础.md",
+    title: "微积分基础",
+    line: 18,
+    snippet: "求导是微积分的基本运算之一",
+    matchStart: 3,
+    matchLen: 3,
+  },
+  {
+    path: "法学/民法典导论.md",
+    title: "民法典导论",
+    line: 3,
+    snippet: "这和法律推理很像，可以参照微积分里的极限思想来理解。",
+    matchStart: 13,
+    matchLen: 3,
+  },
+];
+
+function installIpcMock() {
+  const w = window as unknown as Record<string, unknown>;
+  if (w.__TAURI_INTERNALS__) return;
+  w.__TAURI_INTERNALS__ = {
+    invoke: async (cmd: string, args?: Record<string, unknown>) => {
+      const q = String(args?.query ?? "").trim().toLowerCase();
+      if (cmd === "search_titles") {
+        const list = !q
+          ? MOCK_NOTES
+          : MOCK_NOTES.filter(
+              (n) =>
+                n.title.toLowerCase().includes(q) || n.path.toLowerCase().includes(q),
+            );
+        return list.map((n) => ({ ...n, score: 100 }));
+      }
+      if (cmd === "search_content") {
+        if (!q) return [];
+        return MOCK_CONTENT.filter((h) => h.snippet.toLowerCase().includes(q));
+      }
+      throw new Error(`未 mock 的命令：${cmd}`);
+    },
+  };
+}
 import type { EditorMode } from "@/lib/types";
 import "katex/dist/katex.min.css";
 import "highlight.js/styles/github.css";
@@ -306,6 +368,48 @@ function LinksPanelPreview() {
   );
 }
 
+/** 命令面板预览（Ctrl+P） */
+function PalettePreview() {
+  // 必须在首次渲染之前填充缓存：命令面板在 render 里读 allNoteMetas()
+  if (!(window as unknown as Record<string, unknown>).__MOCK_READY__) {
+    installIpcMock();
+    setLinkIndex(
+      MOCK_NOTES.map((n) => ({
+        path: n.path,
+        title: n.title,
+        tags: [],
+        links: [],
+        mtimeMs: 0,
+        size: 0,
+      })),
+    );
+    (window as unknown as Record<string, unknown>).__MOCK_READY__ = true;
+  }
+  return (
+    <div style={{ height: "100vh", background: "var(--bg)" }}>
+      <CommandPalette onClose={() => {}} />
+    </div>
+  );
+}
+
+/** 全局搜索预览（Ctrl+Shift+F） */
+function GSearchPreview() {
+  if (!(window as unknown as Record<string, unknown>).__MOCK_READY__) {
+    installIpcMock();
+    (window as unknown as Record<string, unknown>).__MOCK_READY__ = true;
+  }
+  return (
+    <div style={{ height: "100vh", background: "var(--bg)" }}>
+      <ContentSearch
+        onClose={() => {}}
+        onJump={(p, l) => {
+          (window as unknown as Record<string, unknown>).__JUMPED__ = { path: p, line: l };
+        }}
+      />
+    </div>
+  );
+}
+
 function Preview() {
   const query = new URLSearchParams(location.search);
   const page = query.get("page");
@@ -319,6 +423,8 @@ function Preview() {
   if (page === "sidebar") return <SidebarMock />;
   if (page === "wikilink") return <WikiLinkPreview />;
   if (page === "links") return <LinksPanelPreview />;
+  if (page === "palette") return <PalettePreview />;
+  if (page === "gsearch") return <GSearchPreview />;
 
   React.useEffect(() => {
     let cancelled = false;

@@ -11,6 +11,8 @@ import { StatusBar } from "@/components/StatusBar";
 import { Toasts } from "@/components/Toasts";
 import { Outline } from "@/components/Outline";
 import { LinksPanel } from "@/components/LinksPanel";
+import { CommandPalette } from "@/components/CommandPalette";
+import { ContentSearch } from "@/components/ContentSearch";
 import { useStore } from "@/stores/app";
 import { registerWikiActions } from "@/editor/livePreview";
 import { refreshLinkIndex } from "@/lib/linkCache";
@@ -42,6 +44,8 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [showOutline, setShowOutline] = useState(true);
   const [showLinks, setShowLinks] = useState(true);
+  /** 覆盖层：命令面板 / 全局搜索 */
+  const [overlay, setOverlay] = useState<"palette" | "search" | null>(null);
   const [showLineNumbers, setShowLineNumbers] = useState(false);
 
   // 启动时恢复上次打开的笔记库
@@ -113,6 +117,14 @@ export default function App() {
       } else if (k === "p" && e.shiftKey) {
         e.preventDefault();
         setMode(useStore.getState().mode === "live" ? "source" : "live");
+      } else if (k === "p" && !e.shiftKey) {
+        // Ctrl+P：命令面板（按标题跳转）
+        e.preventDefault();
+        setOverlay((cur) => (cur === "palette" ? null : "palette"));
+      } else if (k === "f" && e.shiftKey) {
+        // Ctrl+Shift+F：全局全文搜索
+        e.preventDefault();
+        setOverlay((cur) => (cur === "search" ? null : "search"));
       } else if (k === "o") {
         e.preventDefault();
         await refresh("");
@@ -252,6 +264,26 @@ export default function App() {
 
         <StatusBar cursor={cursor} saving={saving} />
       </main>
+
+      {overlay === "palette" && <CommandPalette onClose={() => setOverlay(null)} />}
+      {overlay === "search" && (
+        <ContentSearch
+          onClose={() => setOverlay(null)}
+          onJump={(path, line) => {
+            void (async () => {
+              await useStore.getState().openNote(path);
+              requestAnimationFrame(() => {
+                const view = getView();
+                if (!view) return;
+                const doc = view.state.doc;
+                const target = doc.line(Math.min(line, doc.lines));
+                view.dispatch({ selection: { anchor: target.from }, scrollIntoView: true });
+                view.focus();
+              });
+            })();
+          }}
+        />
+      )}
 
       <Toasts />
     </div>
