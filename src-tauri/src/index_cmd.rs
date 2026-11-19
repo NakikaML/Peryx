@@ -112,6 +112,14 @@ pub fn rename_tag(
         let guard = state.vault.lock().map_err(|e| e.to_string())?;
         guard.clone().ok_or_else(|| "尚未打开笔记库".to_string())?
     };
+    let changed = rename_tag_on_disk(&root, &old_tag, &new_tag)?;
+    // 内容变了，索引需要重建
+    crate::commands::rebuild_index_inner(&root, &state);
+    Ok(changed)
+}
+
+/// `rename_tag` 的实际落盘逻辑（与 Tauri 状态解耦，便于测试）。
+pub fn rename_tag_on_disk(root: &std::path::Path, old_tag: &str, new_tag: &str) -> CmdResult<usize> {
     let new_clean = new_tag.trim().trim_start_matches('#').to_string();
     let old_clean = old_tag.trim().trim_start_matches('#').to_string();
     if new_clean.is_empty() {
@@ -124,14 +132,12 @@ pub fn rename_tag(
         return Ok(0);
     }
 
-    // 先取出需要处理的文件列表（避免长时间持锁）
-    let targets: Vec<String> = {
-        let guard = state.index.read().map_err(|e| e.to_string())?;
-        index::notes_with_tag(&guard, &old_clean)
-            .into_iter()
-            .map(|m| m.path)
-            .collect()
-    };
+    // 先扫描出使用该标签的文件（不依赖内存索引，独立可测）
+    let idx = index::NoteIndex::scan(root);
+    let targets: Vec<String> = index::notes_with_tag(&idx, &old_clean)
+        .into_iter()
+        .map(|m| m.path)
+        .collect();
 
     let mut changed = 0usize;
     for rel in targets {
@@ -145,8 +151,74 @@ pub fn rename_tag(
             }
         }
     }
-
-    // 内容变了，索引需要重建
-    crate::commands::rebuild_index_inner(&root, &state);
     Ok(changed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn vault(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("peryx_renametag_{tag}"));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("sub")).unwrap();
+        dir
+    }
+
+    #[test]
+    fn rename_tag_rewrites_files_and_reports_count() {
+        let dir = vault("hit");
+        fs::write(dir.join("a.md"), "# A\n\n#数学 与 [[B]]\n").unwrap();
+        fs::write(dir.join("sub").join("b.md"), "# B\n\n也是 #数学\n").unwrap();
+        fs::write(dir.join("c.md"), "# C\n\n只有 #物理\n").unwrap();
+
+        let changed = rename_tag_on_disk(&dir, "数学", "代数").unwrap();
+        assert_eq!(changed, 2, "应修改 2 个文件");
+
+        let a = fs::read_to_string(dir.join("a.md")).unwrap();
+        assert!(a.contains("#代数"), "a.md 应被替换: {a}");
+        let b = fs::read_to_string(dir.join("sub").join("b.md")).unwrap();
+        assert!(b.contains("#代数"), "b.md 应被替换: {b}");
+        let c = fs::read_to_string(dir.join("c.md")).unwrap();
+        assert!(c.contains("#物理"), "无关文件不应改动: {c}");
+
+        // 标签确实改名了
+        let idx = index::NoteIndex::scan(&dir);
+        assert_eq!(index::notes_with_tag(&idx, "代数").len(), 2);
+        assert!(index::notes_with_tag(&idx, "数学").is_empty());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rename_tag_skips_code_blocks() {
+        let dir = vault("code");
+        fs::write(
+            dir.join("a.md"),
+            "# A\n\n#数学\n\n```\n#数学\n```\n\n`#数学`\n",
+        )
+        .unwrap();
+
+        rename_tag_on_disk(&dir, "数学", "代数").unwrap();
+        let a = fs::read_to_string(dir.join("a.md")).unwrap();
+        assert!(a.contains("\n#代数\n"), "正文应替换: {a}");
+        assert!(a.contains("```\n#数学\n```"), "代码块不应替换: {a}");
+        assert!(a.contains("`#数学`"), "行内代码不应替换: {a}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rename_tag_rejects_empty_and_noop() {
+        let dir = vault("empty");
+        fs::write(dir.join("a.md"), "# A\n\n#数学\n").unwrap();
+
+        assert!(rename_tag_on_disk(&dir, "", "代数").is_err());
+        assert!(rename_tag_on_disk(&dir, "数学", "  ").is_err());
+        assert_eq!(rename_tag_on_disk(&dir, "数学", "数学").unwrap(), 0);
+        // 不存在的标签
+        assert_eq!(rename_tag_on_disk(&dir, "不存在", "代数").unwrap(), 0);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
