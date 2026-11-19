@@ -1026,6 +1026,64 @@ function FootnotePreview() {
 
 
 
+/** Mermaid 测试内容 */
+const MERMAID_SAMPLE = [
+  "# Mermaid 测试",
+  "",
+  "```mermaid",
+  "graph TD",
+  "  A[开始] --> B{判断}",
+  "  B -->|是| C[结束]",
+  "  B -->|否| A",
+  "```",
+  "",
+  "```mermaid",
+  "this is not valid mermaid !!!",
+  "```",
+  "",
+  "```js",
+  "const x = 1;",
+  "```",
+  "",
+].join("\n");
+
+/** 阅读模式下的 mermaid */
+function MermaidPreview() {
+  seedCalloutStore("read", "__MERMAID_MOCK__");
+  if (!(window as unknown as Record<string, unknown>).__MERMAID_SEEDED__) {
+    useStore.setState({
+      note: { path: "图表测试.md", title: "图表测试", content: MERMAID_SAMPLE, dirty: false },
+    });
+    (window as unknown as Record<string, unknown>).__MERMAID_SEEDED__ = true;
+  }
+  return <App />;
+}
+
+/** 实时渲染下的 mermaid */
+function MermaidLivePreview() {
+  seedCalloutStore("live", "__MERMAIDLIVE_MOCK__");
+  if (!(window as unknown as Record<string, unknown>).__MERMAIDLIVE_SEEDED__) {
+    useStore.setState({
+      note: { path: "图表测试.md", title: "图表测试", content: MERMAID_SAMPLE, dirty: false },
+    });
+    (window as unknown as Record<string, unknown>).__MERMAIDLIVE_SEEDED__ = true;
+  }
+
+  React.useEffect(() => {
+    const timer = window.setInterval(() => {
+      const el = document.querySelector(".cm-editor");
+      if (!el) return;
+      const v = EditorView.findFromDOM(el as HTMLElement);
+      if (!v) return;
+      (window as unknown as Record<string, unknown>).__EDITOR_HANDLE__ = { view: v };
+      window.clearInterval(timer);
+    }, 200);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return <App />;
+}
+
 function Preview() {
   const query = new URLSearchParams(location.search);
   const page = query.get("page");
@@ -1054,6 +1112,8 @@ function Preview() {
   if (page === "callout-read") return <CalloutReadPreview />;
   if (page === "callout-live") return <CalloutLivePreview />;
   if (page === "footnote") return <FootnotePreview />;
+  if (page === "mermaid") return <MermaidPreview />;
+  if (page === "mermaid-live") return <MermaidLivePreview />;
 
   React.useEffect(() => {
     let cancelled = false;

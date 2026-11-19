@@ -29,6 +29,7 @@ import type { EditorState, Extension, Transaction } from "@codemirror/state";
 import { CALLOUT_TYPES, renderKatexHtml, renderInline } from "@/lib/markdown";
 import { linkTargetExists, resolveLinkTarget } from "@/lib/linkCache";
 import { getCachedImage, imageFailed, resolveImagePath } from "@/lib/imageCache";
+import { renderMermaidSvg } from "@/lib/mermaid";
 
 /**
  * 当前笔记的相对路径。
@@ -81,6 +82,49 @@ class BlockMathWidget extends WidgetType {
     wrap.dataset.mathFrom = String(this.from);
     wrap.innerHTML = renderKatexHtml(this.tex, true);
     wrap.title = "点击编辑公式";
+    return wrap;
+  }
+  ignoreEvent(): boolean {
+    return false;
+  }
+}
+
+/**
+ * 实时渲染里的 Mermaid 图（插在代码块下方）。
+ *
+ * mermaid 本身是动态加载的，所以先渲染占位，加载完成后回填 SVG。
+ */
+class MermaidBlockWidget extends WidgetType {
+  constructor(readonly code: string) {
+    super();
+  }
+  eq(other: MermaidBlockWidget): boolean {
+    return other.code === this.code;
+  }
+  toDOM(): HTMLElement {
+    const wrap = document.createElement("div");
+    wrap.className = "mermaid-diagram cm-mermaid";
+    wrap.innerHTML = `<div class="mermaid-loading">正在渲染图表…</div>`;
+
+    void renderMermaidSvg(this.code)
+      .then((svg) => {
+        wrap.innerHTML = svg;
+      })
+      .catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        wrap.innerHTML = "";
+        const err = document.createElement("div");
+        err.className = "mermaid-error";
+        const title = document.createElement("div");
+        title.className = "mermaid-error-title";
+        title.textContent = "⚠ Mermaid 渲染失败";
+        const body = document.createElement("div");
+        body.className = "mermaid-error-msg";
+        body.textContent = msg;
+        err.append(title, body);
+        wrap.appendChild(err);
+      });
+
     return wrap;
   }
   ignoreEvent(): boolean {
@@ -703,6 +747,12 @@ function buildDecorations(state: EditorState): DecorationSet {
   // ---- 1. 逐行块级结构 ----
   let inFence = false;
   let fenceChar = "";
+  /** 当前围栏的语言标记（mermaid 等） */
+  let fenceLang = "";
+  /** 当前围栏起始行号 */
+  let fenceStart = 0;
+  /** mermaid 代码块正文 */
+  let mermaidBuf: string[] = [];
 
   for (let n = 1; n <= doc.lines; n++) {
     const line = doc.line(n);
@@ -716,15 +766,41 @@ function buildDecorations(state: EditorState): DecorationSet {
       if (!inFence) {
         inFence = true;
         fenceChar = fence[1][0];
+        fenceLang = trimmed
+          .slice(fence[0].length)
+          .trim()
+          .split(/\s+/)[0]
+          .toLowerCase();
+        fenceStart = n;
+        mermaidBuf = [];
         pushLine(line.from, fenceLineDeco);
       } else if (fenceChar === fence[1][0]) {
         inFence = false;
         pushLine(line.from, fenceLineDeco);
+        // mermaid 代码块：非编辑态时在块下方渲染成图
+        if (fenceLang === "mermaid") {
+          const code = mermaidBuf.join("\n").trim();
+          const blockFrom = doc.line(fenceStart).from;
+          if (code && !isActiveRange(blockFrom, line.to)) {
+            pending.push({
+              from: line.to,
+              to: line.to,
+              deco: Decoration.widget({
+                widget: new MermaidBlockWidget(code),
+                block: true,
+                side: 1,
+              }),
+            });
+          }
+        }
+        fenceLang = "";
+        mermaidBuf = [];
       }
       continue;
     }
     if (inFence) {
       pushLine(line.from, codeLineDeco);
+      if (fenceLang === "mermaid") mermaidBuf.push(text);
       continue;
     }
 

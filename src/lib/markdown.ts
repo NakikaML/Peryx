@@ -400,6 +400,18 @@ export function getMarkdown(): MarkdownItInstance {
   md.renderer.rules.math_block = (tokens, idx) =>
     `<div class="math-block">${renderKatex(tokens[idx].content, true)}</div>\n`;
 
+  // mermaid：输出占位标签，由 React 端渲染成真实图表
+  const defaultFence = md.renderer.rules.fence;
+  md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+    const info = (tokens[idx].info || "").trim().split(/\s+/)[0].toLowerCase();
+    if (info === "mermaid") {
+      return `<div class="mermaid-block" data-mermaid="${escapeHtml(tokens[idx].content)}"></div>`;
+    }
+    return defaultFence
+      ? defaultFence(tokens, idx, options, env, self)
+      : self.renderToken(tokens, idx, options);
+  };
+
   taskListPlugin(md);
   calloutPlugin(md);
   footnotePlugin(md);

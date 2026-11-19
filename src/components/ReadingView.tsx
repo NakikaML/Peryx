@@ -14,6 +14,7 @@ import { renderMarkdown } from "@/lib/markdown";
 import { api } from "@/lib/api";
 import { getCachedImage, onImageLoaded, resolveImagePath } from "@/lib/imageCache";
 import { linkTargetExists, resolveLinkTarget } from "@/lib/linkCache";
+import { MermaidDiagram } from "@/components/MermaidDiagram";
 
 interface Props {
   /** Markdown 原文 */
@@ -159,6 +160,24 @@ export function ReadingView({
     return applyTags(out);
   }, [text, images, links, imgUrls, docPath]);
 
+  /**
+   * 把 HTML 按 mermaid 占位切成片段：
+   * 普通片段直接塞 innerHTML，图表片段交给 <MermaidDiagram /> 渲染。
+   */
+  const parts = useMemo(() => {
+    const segs: Array<{ kind: "html"; value: string } | { kind: "mermaid"; code: string }> = [];
+    const re = /<div class="mermaid-block" data-mermaid="([\s\S]*?)"><\/div>/g;
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html))) {
+      if (m.index > last) segs.push({ kind: "html", value: html.slice(last, m.index) });
+      segs.push({ kind: "mermaid", code: decodeHtml(m[1]) });
+      last = m.index + m[0].length;
+    }
+    if (last < html.length) segs.push({ kind: "html", value: html.slice(last) });
+    return segs;
+  }, [html]);
+
   /** 点击委托：双链 / 标签 / 脚注 */
   const onClick = (e: React.MouseEvent) => {
     const el = e.target as HTMLElement;
@@ -205,11 +224,19 @@ export function ReadingView({
       onDoubleClick={() => onRequestEdit?.()}
       title="双击回到编辑"
     >
-      <div
-        ref={rootRef}
-        className="reading-body markdown-body"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+      <div ref={rootRef} className="reading-body markdown-body">
+        {parts.map((p, i) =>
+          p.kind === "html" ? (
+            <div
+              key={i}
+              className="reading-chunk"
+              dangerouslySetInnerHTML={{ __html: p.value }}
+            />
+          ) : (
+            <MermaidDiagram key={i} code={p.code} />
+          ),
+        )}
+      </div>
     </div>
   );
 }
@@ -230,6 +257,16 @@ function escapeHtml(s: string): string {
 
 function escapeAttr(s: string): string {
   return escapeHtml(s).replace(/'/g, "&#39;");
+}
+
+/** 反转义 markdown-it 输出的代码内容（用于取回 mermaid 源码） */
+function decodeHtml(s: string): string {
+  return s
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
 }
 
 /** 标签必须至少有一个非数字字符，且不含空格 */

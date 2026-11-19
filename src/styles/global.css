@@ -2009,6 +2009,71 @@ button.link-item:hover {
   transition: background 0.3s;
 }
 
+/* ===== Mermaid 图表 ===== */
+
+/* 片段容器用 display:contents，避免破坏正文的相邻选择器 */
+.reading-chunk {
+  display: contents;
+}
+
+.mermaid-diagram {
+  margin: 1.2em 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  overflow-x: auto;
+  text-align: center;
+}
+
+.mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-loading {
+  margin: 1.2em 0;
+  padding: 22px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--fg-faint);
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+}
+
+.mermaid-error {
+  margin: 1.2em 0;
+  padding: 10px 14px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: rgba(184, 73, 60, 0.06);
+}
+
+.mermaid-error-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--danger);
+  margin-bottom: 6px;
+}
+
+.mermaid-error-msg {
+  font-size: 11.5px;
+  color: var(--fg-muted);
+  margin-bottom: 8px;
+  word-break: break-word;
+}
+
+.mermaid-error-src {
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--bg-panel);
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-family: var(--font-mono);
+  overflow-x: auto;
+  color: var(--fg-muted);
+}
+
 /* ---- 拖拽排序 ---- */
 
 .tree-item.dragging {
