@@ -15,6 +15,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { useStore } from "@/stores/app";
 import { setLinkIndex } from "@/lib/linkCache";
 import { registerWikiActions } from "@/editor/livePreview";
+import { LinksPanel } from "@/components/LinksPanel";
 
 // 调试/自动化测试用：把 store 暴露到 window
 (window as unknown as Record<string, unknown>).__STORE__ = { useStore };
@@ -248,6 +249,63 @@ function WikiLinkPreview() {
   );
 }
 
+/** 链接面板测试页：mock 反向链接与出链数据 */
+function LinksPanelPreview() {
+  React.useEffect(() => {
+    useStore.setState({
+      note: {
+        path: "微积分基础.md",
+        title: "微积分基础",
+        content: "# 微积分基础\n",
+        dirty: false,
+      },
+      backlinks: [
+        {
+          path: "法学/民法典导论.md",
+          title: "民法典导论",
+          line: 12,
+          snippet: "这和法律推理很像，可以参照 [[微积分基础]] 里的极限思想来理解。",
+          // `[[微积分基础]]` 共 9 个字符，起始下标 14
+          matchStart: 14,
+          matchLen: 9,
+        },
+        {
+          path: "C++程序设计基础/CPP-4 函数.md",
+          title: "CPP-4 函数",
+          line: 3,
+          snippet: "函数连续性参见 [[微积分基础]]。",
+          matchStart: 8,
+          matchLen: 9,
+        },
+      ],
+      outlinks: [
+        { target: "导数", alias: null, line: 5 },
+        { target: "极限", alias: "极限的定义", line: 9 },
+      ],
+    });
+  }, []);
+
+  return (
+    <div className="app" style={{ height: "100vh" }}>
+      <main className="main">
+        <div className="workspace">
+          <div className="editor-wrap">
+            <div className="empty-state">
+              <div className="empty-icon">🔗</div>
+              <p>链接面板预览</p>
+            </div>
+          </div>
+          <LinksPanel
+            onJump={(p, l) => {
+              (window as unknown as Record<string, unknown>).__JUMPED__ = { path: p, line: l };
+            }}
+          />
+        </div>
+      </main>
+    </div>
+  );
+}
+
 function Preview() {
   const query = new URLSearchParams(location.search);
   const page = query.get("page");
@@ -260,6 +318,7 @@ function Preview() {
   if (page === "folder") return <FolderSelectedMock />;
   if (page === "sidebar") return <SidebarMock />;
   if (page === "wikilink") return <WikiLinkPreview />;
+  if (page === "links") return <LinksPanelPreview />;
 
   React.useEffect(() => {
     let cancelled = false;

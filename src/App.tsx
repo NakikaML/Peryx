@@ -10,6 +10,7 @@ import { Welcome } from "@/components/Welcome";
 import { StatusBar } from "@/components/StatusBar";
 import { Toasts } from "@/components/Toasts";
 import { Outline } from "@/components/Outline";
+import { LinksPanel } from "@/components/LinksPanel";
 import { useStore } from "@/stores/app";
 import { registerWikiActions } from "@/editor/livePreview";
 import { refreshLinkIndex } from "@/lib/linkCache";
@@ -40,6 +41,7 @@ export default function App() {
   const [cursor, setCursor] = useState<{ line: number; col: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const [showOutline, setShowOutline] = useState(true);
+  const [showLinks, setShowLinks] = useState(true);
   const [showLineNumbers, setShowLineNumbers] = useState(false);
 
   // 启动时恢复上次打开的笔记库
@@ -184,6 +186,13 @@ export default function App() {
                     >
                       ☰
                     </button>
+                    <button
+                      className={`icon-btn ${showLinks ? "on" : ""}`}
+                      title="显示链接面板（反向链接 / 出链）"
+                      onClick={() => setShowLinks((v) => !v)}
+                    >
+                      🔗
+                    </button>
                   </div>
                 </div>
                 {loadingNote ? (
@@ -220,6 +229,25 @@ export default function App() {
             view.dispatch({ selection: { anchor: target.from }, scrollIntoView: true });
             view.focus();
           }} />}
+
+          {note && showLinks && (
+            <LinksPanel
+              onJump={(path, line) => {
+                void (async () => {
+                  await useStore.getState().openNote(path);
+                  // 等编辑器把新内容装进去再定位
+                  requestAnimationFrame(() => {
+                    const view = getView();
+                    if (!view) return;
+                    const doc = view.state.doc;
+                    const target = doc.line(Math.min(line, doc.lines));
+                    view.dispatch({ selection: { anchor: target.from }, scrollIntoView: true });
+                    view.focus();
+                  });
+                })();
+              }}
+            />
+          )}
         </div>
 
         <StatusBar cursor={cursor} saving={saving} />

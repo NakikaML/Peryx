@@ -5,9 +5,11 @@ import { api, errText } from "@/lib/api";
 import { clearLinkIndex, refreshLinkIndex } from "@/lib/linkCache";
 import type {
   ChildrenMap,
+  ContextHit,
   EditorMode,
   ExpandedMap,
   FileNode,
+  LinkRef,
   OpenNote,
   VaultInfo,
 } from "@/lib/types";
@@ -76,6 +78,14 @@ interface AppStore {
   /** 按给定的文件名顺序重排（自动切换为手动模式） */
   applyOrder: (dirPath: string, order: string[]) => Promise<void>;
 
+  // ---- v0.2 知识连接 ----
+  /** 当前笔记的反向链接 */
+  backlinks: ContextHit[];
+  /** 当前笔记的出链（指向哪些笔记） */
+  outlinks: LinkRef[];
+  /** 加载当前笔记的反向链接与出链 */
+  loadLinks: (path: string) => Promise<void>;
+
   openNote: (path: string) => Promise<void>;
   /** 在目录树中选中文件夹（不读取内容） */
   selectFolder: (dirPath: string) => void;
@@ -120,6 +130,8 @@ export const useStore = create<AppStore>((set, get) => ({
   sidebarOpen: true,
   loadingNote: false,
   toasts: [],
+  backlinks: [],
+  outlinks: [],
 
   async loadVault() {
     try {
@@ -289,6 +301,24 @@ export const useStore = create<AppStore>((set, get) => ({
     }
   },
 
+  async loadLinks(path) {
+    if (!path) {
+      set({ backlinks: [], outlinks: [] });
+      return;
+    }
+    try {
+      const [backlinks, outlinks] = await Promise.all([
+        api.getBacklinks(path),
+        api.getOutlinks(path),
+      ]);
+      // 切换笔记后旧结果可能才返回，丢弃过期数据
+      if (get().note?.path !== path) return;
+      set({ backlinks, outlinks });
+    } catch {
+      set({ backlinks: [], outlinks: [] });
+    }
+  },
+
   async openNote(path) {
     // 防御：只允许打开 .md 文件
     if (!/\.md$/i.test(path)) {
@@ -309,6 +339,7 @@ export const useStore = create<AppStore>((set, get) => ({
         selectedIsDir: false,
         loadingNote: false,
       });
+      void get().loadLinks(path);
     } catch (e) {
       set({ loadingNote: false });
       get().toast(errText(e), "error");
@@ -338,6 +369,8 @@ export const useStore = create<AppStore>((set, get) => ({
       set((s) => (s.note ? { note: { ...s.note, dirty: false } } : {}));
       // 标题 / 标签 / 双链可能变了，刷新前端链接缓存（后端已增量更新索引）
       void refreshLinkIndex();
+      // 自己改了内容，反链/出链要重算
+      void get().loadLinks(note.path);
     } catch (e) {
       get().toast(errText(e), "error");
     }
