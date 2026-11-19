@@ -128,8 +128,104 @@ function taskListPlugin(md: MarkdownItInstance): void {
   });
 }
 
-/** 大纲锚点：给标题加上 id，供大纲面板跳转 */
-function headingAnchorPlugin(md: MarkdownItInstance): void {
+// ---------------------------------------------------------------------------
+// Callouts（Obsidian 风格的 `> [!note] 标题`）
+// ---------------------------------------------------------------------------
+
+/** 支持的标注类型 → 图标 + 默认标题 */
+export const CALLOUT_TYPES: Record<string, { icon: string; title: string }> = {
+  note: { icon: "📝", title: "笔记" },
+  info: { icon: "ℹ️", title: "信息" },
+  tip: { icon: "💡", title: "提示" },
+  hint: { icon: "💡", title: "提示" },
+  success: { icon: "✅", title: "成功" },
+  check: { icon: "✅", title: "成功" },
+  warning: { icon: "⚠️", title: "警告" },
+  caution: { icon: "⚠️", title: "警告" },
+  danger: { icon: "🚨", title: "危险" },
+  error: { icon: "🚨", title: "错误" },
+  bug: { icon: "🐛", title: "缺陷" },
+  question: { icon: "❓", title: "疑问" },
+  example: { icon: "📋", title: "示例" },
+  quote: { icon: "❝", title: "引用" },
+  abstract: { icon: "📌", title: "摘要" },
+  todo: { icon: "☑️", title: "待办" },
+  important: { icon: "🔥", title: "重要" },
+};
+
+/** 把 `[!type]` 标记从引用块里抽出来做成标题 */
+function calloutPlugin(md: MarkdownItInstance): void {
+  md.core.ruler.after("inline", "peryx_callout", (state) => {
+    const toks = state.tokens;
+    // 倒序遍历，便于直接删除 token
+    for (let i = toks.length - 1; i >= 0; i--) {
+      const open = toks[i];
+      if (open.type !== "blockquote_open") continue;
+
+      // 找这一层 blockquote 的第一个 inline
+      let depth = 1;
+      let inlineIdx = -1;
+      let closeIdx = -1;
+      for (let j = i + 1; j < toks.length; j++) {
+        const t = toks[j];
+        if (t.type === "blockquote_open") depth++;
+        else if (t.type === "blockquote_close") {
+          depth--;
+          if (depth === 0) {
+            closeIdx = j;
+            break;
+          }
+        } else if (depth === 1 && t.type === "inline" && inlineIdx < 0) {
+          inlineIdx = j;
+        }
+      }
+      if (inlineIdx < 0 || closeIdx < 0) continue;
+
+      const inline = toks[inlineIdx];
+      const children = inline.children;
+      if (!children || children.length === 0) continue;
+      const first = children[0];
+      if (first.type !== "text") continue;
+
+      const m = /^\[!([\w-]+)\]([+-]?)[ \t]*/.exec(first.content);
+      if (!m) continue;
+      const kind = m[1].toLowerCase();
+      const meta = CALLOUT_TYPES[kind];
+      if (!meta) continue; // 不认识的类型 → 当普通引用
+
+      // 剩余内容作为标题（只取这一行）
+      const rest = first.content.slice(m[0].length);
+      const nl = rest.indexOf("\n");
+      const titleText = (nl >= 0 ? rest.slice(0, nl) : rest).trim();
+      const remaining = nl >= 0 ? rest.slice(nl + 1) : "";
+
+      first.content = remaining;
+
+      // 标题用行内 html 包起来（在 <p> 里放 div 是非法嵌套，所以用 span）
+      const title = titleText || meta.title;
+      const openTok = new state.Token("html_inline", "", 0);
+      openTok.content = `<span class="callout-title"><span class="callout-icon">${meta.icon}</span><span class="callout-label">${escapeHtml(
+        title,
+      )}</span></span>`;
+      children.unshift(openTok);
+
+      // 整行只有标记、正文从下一段开始 → 去掉这个空段落
+      if (!first.content.trim() && children.length === 1) {
+        // children: [titleTok]，且 inline 之后紧跟 paragraph_close
+        const pOpen = toks[inlineIdx - 1];
+        const pClose = toks[inlineIdx + 1];
+        if (pOpen?.type === "paragraph_open" && pClose?.type === "paragraph_close") {
+          toks.splice(inlineIdx - 1, 3);
+        }
+      }
+
+      open.attrJoin("class", `callout callout-${kind}`);
+    }
+    return true;
+  });
+}
+
+/** 大纲锚点：给标题加上 id，供大纲面板跳转 */function headingAnchorPlugin(md: MarkdownItInstance): void {
   md.core.ruler.push("peryx_heading_anchor", (state) => {
     let idx = 0;
     for (const t of state.tokens) {
@@ -180,6 +276,7 @@ export function getMarkdown(): MarkdownItInstance {
     `<div class="math-block">${renderKatex(tokens[idx].content, true)}</div>\n`;
 
   taskListPlugin(md);
+  calloutPlugin(md);
   headingAnchorPlugin(md);
 
   // 外部链接在新窗口打开

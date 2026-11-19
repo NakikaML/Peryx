@@ -1825,6 +1825,128 @@ button.link-item:hover {
   overflow-y: hidden;
 }
 
+/* ===== Callouts（> [!note] 标注块）===== */
+
+:root {
+  --callout-note: #4a7fb5;
+  --callout-info: #4a7fb5;
+  --callout-tip: #2f6f6b;
+  --callout-success: #3f8a54;
+  --callout-warning: #b8860b;
+  --callout-danger: #b8493c;
+  --callout-quote: #7a7a7a;
+  --callout-bug: #b8493c;
+  --callout-question: #8a5fb0;
+  --callout-important: #b8493c;
+  --callout-abstract: #4a7fb5;
+  --callout-todo: #4a7fb5;
+  --callout-example: #8a5fb0;
+}
+
+.callout {
+  margin: 1em 0;
+  padding: 10px 14px 10px 14px;
+  border-radius: 8px;
+  border-left: 4px solid var(--callout-note);
+  background: color-mix(in srgb, var(--callout-note) 8%, transparent);
+  color: var(--fg);
+}
+
+.callout > :first-child {
+  margin-top: 0;
+}
+.callout > :last-child {
+  margin-bottom: 0;
+}
+
+.callout-title {
+  display: block;
+  font-weight: 650;
+  margin-bottom: 6px;
+  color: var(--callout-note);
+}
+
+.callout-icon {
+  margin-right: 6px;
+}
+
+.callout-note,
+.callout-info,
+.callout-abstract,
+.callout-todo {
+  --callout-note: var(--callout-info);
+  border-left-color: var(--callout-info);
+  background: color-mix(in srgb, var(--callout-info) 8%, transparent);
+}
+
+.callout-tip,
+.callout-hint {
+  border-left-color: var(--callout-tip);
+  background: color-mix(in srgb, var(--callout-tip) 8%, transparent);
+}
+
+.callout-success,
+.callout-check {
+  border-left-color: var(--callout-success);
+  background: color-mix(in srgb, var(--callout-success) 8%, transparent);
+}
+
+.callout-warning,
+.callout-caution {
+  border-left-color: var(--callout-warning);
+  background: color-mix(in srgb, var(--callout-warning) 10%, transparent);
+}
+
+.callout-danger,
+.callout-error,
+.callout-bug,
+.callout-failure {
+  border-left-color: var(--callout-danger);
+  background: color-mix(in srgb, var(--callout-danger) 8%, transparent);
+}
+
+.callout-question {
+  border-left-color: var(--callout-question);
+  background: color-mix(in srgb, var(--callout-question) 8%, transparent);
+}
+
+.callout-important {
+  border-left-color: var(--callout-important);
+  background: color-mix(in srgb, var(--callout-important) 9%, transparent);
+}
+
+.callout-example {
+  border-left-color: var(--callout-example);
+  background: color-mix(in srgb, var(--callout-example) 8%, transparent);
+}
+
+/* 标题颜色跟随类型（用 border 色） */
+.callout-tip .callout-title { color: var(--callout-tip); }
+.callout-success .callout-title { color: var(--callout-success); }
+.callout-warning .callout-title { color: var(--callout-warning); }
+.callout-danger .callout-title,
+.callout-error .callout-title,
+.callout-bug .callout-title { color: var(--callout-danger); }
+.callout-question .callout-title { color: var(--callout-question); }
+.callout-example .callout-title { color: var(--callout-example); }
+
+/* 实时渲染里的标注行 */
+.cm-callout {
+  border-left: 3px solid var(--callout-note);
+  background: color-mix(in srgb, var(--callout-note) 7%, transparent);
+  padding-left: 8px !important;
+}
+
+.cm-callout-note { border-left-color: var(--callout-info); }
+.cm-callout-tip { border-left-color: var(--callout-tip); }
+.cm-callout-success { border-left-color: var(--callout-success); }
+.cm-callout-warning { border-left-color: var(--callout-warning); }
+.cm-callout-danger,
+.cm-callout-error,
+.cm-callout-bug { border-left-color: var(--callout-danger); }
+.cm-callout-question { border-left-color: var(--callout-question); }
+.cm-callout-example { border-left-color: var(--callout-example); }
+
 /* ---- 拖拽排序 ---- */
 
 .tree-item.dragging {

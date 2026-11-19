@@ -26,7 +26,7 @@ import { Decoration, EditorView, WidgetType } from "@codemirror/view";
 import type { DecorationSet } from "@codemirror/view";
 import { RangeSetBuilder, Range, StateEffect, StateField } from "@codemirror/state";
 import type { EditorState, Extension, Transaction } from "@codemirror/state";
-import { renderKatexHtml, renderInline } from "@/lib/markdown";
+import { CALLOUT_TYPES, renderKatexHtml, renderInline } from "@/lib/markdown";
 import { linkTargetExists, resolveLinkTarget } from "@/lib/linkCache";
 import { getCachedImage, imageFailed, resolveImagePath } from "@/lib/imageCache";
 
@@ -578,6 +578,25 @@ class InlineMathWidget extends WidgetType {
 
 const headingDeco = [1, 2, 3, 4, 5, 6].map((l) => Decoration.line({ class: `cm-h${l}` }));
 const quoteDeco = Decoration.line({ class: "cm-quote" });
+
+/** 从 `> [!note]` 这样的行里取出标注类型 */
+function calloutKindOf(text: string): string | null {
+  const m = /^\s*>\s*\[!([\w-]+)\]/.exec(text);
+  if (!m) return null;
+  const kind = m[1].toLowerCase();
+  return CALLOUT_TYPES[kind] ? kind : null;
+}
+
+/** 标注类型的行装饰（按类型上色），带缓存避免重复创建 */
+const calloutDecoCache = new Map<string, Decoration>();
+function calloutLineDeco(kind: string): Decoration {
+  let d = calloutDecoCache.get(kind);
+  if (!d) {
+    d = Decoration.line({ class: `cm-callout cm-callout-${kind}` });
+    calloutDecoCache.set(kind, d);
+  }
+  return d;
+}
 const codeLineDeco = Decoration.line({ class: "cm-code-line" });
 const fenceLineDeco = Decoration.line({ class: "cm-code-fence" });
 const taskLineDeco = Decoration.line({ class: "cm-task-line" });
@@ -734,11 +753,19 @@ function buildDecorations(state: EditorState): DecorationSet {
       continue;
     }
 
-    // 引用
+    // 引用 / 标注块
     if (/^\s*>/.test(text)) {
-      pushLine(line.from, quoteDeco);
-      const m = /^(\s*>\s?)/.exec(text);
-      if (m) mark(line.from, line.from + m[0].length, markDeco(active));
+      const kind = CALLOUT_TYPES[calloutKindOf(text) ?? ""] ? calloutKindOf(text) : null;
+      if (kind) {
+        pushLine(line.from, calloutLineDeco(kind));
+        // `> [!note]` 标记：非当前行时隐藏，让标题看起来像正常标题
+        const marker = /^(\s*>\s*\[![^\]]+\][+-]?\s*)/.exec(text);
+        if (marker) mark(line.from, line.from + marker[1].length, markDeco(active));
+      } else {
+        pushLine(line.from, quoteDeco);
+        const m = /^(\s*>\s?)/.exec(text);
+        if (m) mark(line.from, line.from + m[0].length, markDeco(active));
+      }
       continue;
     }
 

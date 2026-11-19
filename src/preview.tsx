@@ -922,6 +922,79 @@ function ReadingModePreview() {
   return <App />;
 }
 
+/** Callouts 示例内容 */
+const CALLOUT_SAMPLE = [
+  "# 标注块测试",
+  "",
+  "> [!note] 这是一条笔记",
+  "> 正文内容，支持 **加粗** 和 `代码`。",
+  "",
+  "> [!warning] 注意安全",
+  "> 这里要小心。",
+  "",
+  "> [!tip]",
+  "> 没有标题时用默认标题。",
+  "",
+  "> 这是普通引用，不是标注。",
+  "",
+].join("\n");
+
+/** 造一个 callout 测试用的 store */
+function seedCalloutStore(mode: "read" | "live", flag: string): boolean {
+  const g = window as unknown as Record<string, unknown>;
+  if (g[flag]) return false;
+  g.__TAURI_INTERNALS__ = {
+    invoke: async (cmd: string) => {
+      if (cmd === "load_settings") return null;
+      if (cmd === "get_vault") return null;
+      if (cmd === "get_recent_vaults") return [];
+      throw new Error(`未 mock 的命令：${cmd}`);
+    },
+  };
+  useStore.setState({
+    vault: { root: "D:\\Test", name: "Test" },
+    sidebarOpen: true,
+    mode,
+    note: { path: "标注测试.md", title: "标注测试", content: CALLOUT_SAMPLE, dirty: false },
+    children: {
+      "": [
+        { name: "标注测试.md", path: "标注测试.md", isDir: false, isImage: false, modifiedMs: 0, size: 10 },
+      ],
+    },
+    backlinks: [],
+    outlinks: [],
+    tags: [],
+  });
+  setLinkIndex([]);
+  g[flag] = true;
+  return true;
+}
+
+/** 阅读模式下的 callouts */
+function CalloutReadPreview() {
+  seedCalloutStore("read", "__CALLOUT_MOCK__");
+  return <App />;
+}
+
+/** 实时渲染下的 callouts */
+function CalloutLivePreview() {
+  seedCalloutStore("live", "__CALLOUTLIVE_MOCK__");
+
+  React.useEffect(() => {
+    const timer = window.setInterval(() => {
+      const el = document.querySelector(".cm-editor");
+      if (!el) return;
+      const v = EditorView.findFromDOM(el as HTMLElement);
+      if (!v) return;
+      (window as unknown as Record<string, unknown>).__EDITOR_HANDLE__ = { view: v };
+      window.clearInterval(timer);
+    }, 200);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return <App />;
+}
+
 function Preview() {
   const query = new URLSearchParams(location.search);
   const page = query.get("page");
@@ -947,6 +1020,8 @@ function Preview() {
   if (page === "caret") return <CaretPreview />;
   if (page === "mathbold") return <MathBoldPreview />;
   if (page === "reading") return <ReadingModePreview />;
+  if (page === "callout-read") return <CalloutReadPreview />;
+  if (page === "callout-live") return <CalloutLivePreview />;
 
   React.useEffect(() => {
     let cancelled = false;
