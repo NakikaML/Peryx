@@ -18,6 +18,7 @@ import { ImagePreview } from "@/components/ImagePreview";
 import { ReadingView } from "@/components/ReadingView";
 import { TabBar } from "@/components/TabBar";
 import { SplitPane } from "@/components/SplitPane";
+import { SplitDropZones } from "@/components/SplitDropZones";
 import { applySettings, defaultSettings, loadSettings, matchShortcut } from "@/lib/settings";
 import type { Settings } from "@/lib/settings";
 import { useStore } from "@/stores/app";
@@ -39,6 +40,9 @@ export default function App() {
   const imagePreview = useStore((s) => s.imagePreview);
   const splitPath = useStore((s) => s.splitPath);
   const closeSplit = useStore((s) => s.closeSplit);
+  const splitSide = useStore((s) => s.splitSide);
+  /** 是否正在拖标签页（决定要不要显示投放热区） */
+  const [tabDragging, setTabDragging] = useState(false);
   const noteContent = note?.content ?? "";
   const noteDirty = note?.dirty ?? false;
 
@@ -116,6 +120,23 @@ export default function App() {
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
+
+  // 拖标签页时显示分屏投放热区（dragstart 冒泡到 window）
+  useEffect(() => {
+    const onStart = (e: DragEvent) => {
+      const el = (e.target as HTMLElement | null)?.closest?.(".tab");
+      if (el) setTabDragging(true);
+    };
+    const onEnd = () => setTabDragging(false);
+    window.addEventListener("dragstart", onStart);
+    window.addEventListener("dragend", onEnd);
+    window.addEventListener("drop", onEnd);
+    return () => {
+      window.removeEventListener("dragstart", onStart);
+      window.removeEventListener("dragend", onEnd);
+      window.removeEventListener("drop", onEnd);
+    };
   }, []);
 
   const getView = useCallback((): EditorView | null => editorRef.current?.view ?? null, []);
@@ -224,7 +245,11 @@ export default function App() {
       <main className="main">
         <Toolbar getView={getView} mode={mode} onModeChange={setMode} />
 
-        <div className="workspace">
+        <div className={`workspace ${splitPath ? `split-${splitSide}` : ""}`}>
+          <div className="pane-area">
+            {(splitSide === "left" || splitSide === "top") && splitPath && (
+              <SplitPane path={splitPath} side={splitSide} onClose={() => closeSplit()} />
+            )}
           <div className="editor-wrap">
             <TabBar />
             {imagePreview ? (
@@ -296,8 +321,13 @@ export default function App() {
             )}
           </div>
 
-          {/* 分屏放在主编辑区与右侧边栏之间：中间分屏，大纲始终在最右 */}
-          {splitPath && <SplitPane path={splitPath} onClose={() => closeSplit()} />}
+            {(splitSide === "right" || splitSide === "bottom") && splitPath && (
+              <SplitPane path={splitPath} side={splitSide} onClose={() => closeSplit()} />
+            )}
+
+            {/* 热区只在编辑区内，不压住右侧边栏 */}
+            {tabDragging && <SplitDropZones />}
+          </div>
 
           {note && rightOpen && (
             <RightSidebar

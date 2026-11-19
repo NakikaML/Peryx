@@ -10,6 +10,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/stores/app";
+import { setDraggingTab } from "@/lib/tabDrag";
 
 export function TabBar() {
   const tabs = useStore((s) => s.tabs);
@@ -67,6 +68,15 @@ export function TabBar() {
                 e.preventDefault();
                 setMenu({ path: t.path, x: e.clientX, y: e.clientY });
               }}
+              draggable
+              onDragStart={(e) => {
+                setDraggingTab(t.path);
+                e.dataTransfer.effectAllowed = "copy";
+                // 有些环境读不到自定义类型，同时写 text/plain 兜底
+                e.dataTransfer.setData("application/x-peryx-tab", t.path);
+                e.dataTransfer.setData("text/plain", t.path);
+              }}
+              onDragEnd={() => setDraggingTab(null)}
             >
               <span className="tab-title">{t.title}</span>
               <button

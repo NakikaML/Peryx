@@ -157,13 +157,18 @@ async function main() {
   // F. 布局顺序：主编辑区 → 分屏 → 右侧边栏
   const order = await js(`(() => {
     const ws = document.querySelector('.workspace');
+    const pane = document.querySelector('.pane-area');
     if (!ws) return { err: '没有 workspace', cls: [] };
-    const cls = Array.from(ws.children).map(function (k) { return String(k.className || ''); });
+    const wsCls = Array.from(ws.children).map(function (k) { return String(k.className || ''); });
+    const paneCls = pane ? Array.from(pane.children).map(function (k) { return String(k.className || ''); }) : [];
     return {
-      cls: cls,
-      editor: cls.findIndex(function (c) { return c.indexOf('editor-wrap') >= 0; }),
-      split: cls.findIndex(function (c) { return c.indexOf('split-pane') >= 0; }),
-      right: cls.findIndex(function (c) { return c.indexOf('right-sidebar') >= 0; }),
+      wsCls: wsCls,
+      cls: paneCls,
+      editor: paneCls.findIndex(function (c) { return c.indexOf('editor-wrap') >= 0; }),
+      split: paneCls.findIndex(function (c) { return c.indexOf('split-pane') >= 0; }),
+      // 右侧边栏现在在 pane-area 之外（最外层）
+      right: wsCls.findIndex(function (c) { return c.indexOf('right-sidebar') >= 0; }),
+      rightInPane: paneCls.some(function (c) { return c.indexOf('right-sidebar') >= 0; }),
     };
   })()`);
   results.push({
@@ -172,7 +177,8 @@ async function main() {
     pass:
       order.editor >= 0 &&
       order.split > order.editor &&
-      (order.right === -1 || order.right > order.split),
+      order.rightInPane === false &&
+      order.right >= 0,
   });
   // D. 关闭分屏
   await js(`(() => {

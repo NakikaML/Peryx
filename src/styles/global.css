@@ -2242,6 +2242,138 @@ button.link-item:hover {
   overflow: hidden;
 }
 
+/* ===== 分屏方向布局 ===== */
+
+/* 主编辑区 + 分屏 的容器：左右为横排，上下为竖排 */
+.pane-area {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  /* 投放热区相对它定位，避免盖住右侧边栏 */
+  position: relative;
+}
+
+.split-left .pane-area,
+.split-right .pane-area {
+  flex-direction: row;
+}
+
+.split-top .pane-area,
+.split-bottom .pane-area {
+  flex-direction: column;
+}
+
+.split-left .split-pane,
+.split-top .split-pane {
+  border-left: none;
+  border-right: 1px solid var(--border-strong);
+}
+
+.split-bottom .split-pane {
+  border-left: none;
+  border-top: 1px solid var(--border-strong);
+}
+
+.split-top .split-pane,
+.split-bottom .split-pane {
+  min-height: 0;
+}
+
+/* ===== 拖 Tab 分屏的投放热区 ===== */
+
+.workspace.receiving .drop-zones,
+.workspace {
+  position: relative;
+}
+
+.drop-zones {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+}
+
+.drop-zone {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 2px dashed var(--accent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent-ink);
+  font-size: 12.5px;
+  pointer-events: auto;
+  transition: background 0.12s, transform 0.12s;
+}
+
+.drop-zone.hot {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  border-style: solid;
+  transform: scale(0.99);
+}
+
+.drop-zone-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* 四个方向各占编辑区一侧 */
+.zone-left {
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22%;
+  height: 62%;
+}
+.zone-left.hot {
+  transform: translateY(-50%) scale(0.98);
+}
+
+.zone-right {
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22%;
+  height: 62%;
+}
+.zone-right.hot {
+  transform: translateY(-50%) scale(0.98);
+}
+
+.zone-top {
+  left: 50%;
+  top: 8px;
+  transform: translateX(-50%);
+  width: 52%;
+  height: 24%;
+}
+.zone-top.hot {
+  transform: translateX(-50%) scale(0.98);
+}
+
+.zone-bottom {
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  width: 52%;
+  height: 24%;
+}
+.zone-bottom.hot {
+  transform: translateX(-50%) scale(0.98);
+}
+
+.tab[draggable="true"] {
+  cursor: grab;
+}
+
+.tab[draggable="true"]:active {
+  cursor: grabbing;
+}
+
 /* ---- 拖拽排序 ---- */
 
 .tree-item.dragging {

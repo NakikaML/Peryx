@@ -12,9 +12,12 @@ import type { EditorHandle } from "@/editor/MarkdownEditor";
 import { api, errText } from "@/lib/api";
 import { ReadingView } from "@/components/ReadingView";
 import type { EditorMode } from "@/lib/types";
+import type { SplitSide } from "@/lib/tabDrag";
 
 interface Props {
   path: string;
+  /** 分屏位置：决定边框画在哪个方向 */
+  side?: SplitSide;
   onClose: () => void;
   /** 滚到某一行（0 基） */
   onJumpLine?: (line: number) => void;
@@ -22,7 +25,7 @@ interface Props {
 
 const AUTOSAVE_MS = 800;
 
-export function SplitPane({ path, onClose }: Props) {
+export function SplitPane({ path, side = "right", onClose }: Props) {
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +93,7 @@ export function SplitPane({ path, onClose }: Props) {
   };
 
   return (
-    <div className="split-pane">
+    <div className={`split-pane split-${side}`}>
       <div className="split-head">
         <span className="split-title" title={path}>
           ⬒ {title}

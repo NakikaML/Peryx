@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { api, errText } from "@/lib/api";
 import { clearLinkIndex, refreshLinkIndex } from "@/lib/linkCache";
+import type { SplitSide } from "@/lib/tabDrag";
 import type {
   ChildrenMap,
   ContextHit,
@@ -55,8 +56,10 @@ interface AppStore {
   tabs: NoteTab[];
   /** 分屏里打开的笔记路径，null 表示未分屏 */
   splitPath: string | null;
+  /** 分屏位置：左右为横排，上下为竖排 */
+  splitSide: SplitSide;
   /** 在分屏里打开笔记 */
-  openInSplit: (path: string) => void;
+  openInSplit: (path: string, side?: SplitSide) => void;
   /** 关闭分屏 */
   closeSplit: () => void;
   /** 正在预览的图片（相对路径），null 表示未预览图片 */
@@ -162,6 +165,7 @@ export const useStore = create<AppStore>((set, get) => ({
   note: null,
   tabs: [],
   splitPath: null,
+  splitSide: "right" as SplitSide,
   imagePreview: null,
   mode: "live",
   sidebarOpen: true,
@@ -198,6 +202,7 @@ export const useStore = create<AppStore>((set, get) => ({
       note: null,
       tabs: [],
       splitPath: null,
+      splitSide: "right" as SplitSide,
       imagePreview: null,
       selectedPath: null,
       selectedIsDir: false,
@@ -417,17 +422,12 @@ export const useStore = create<AppStore>((set, get) => ({
     }
   },
 
-  openInSplit(path) {
+  openInSplit(path, side = "right") {
     if (!/\.md$/i.test(path)) {
       get().toast(`「${path}」不是笔记文件`, "error");
       return;
     }
-    // 分屏里打开的就是当前笔记时不重复开
-    if (get().note?.path === path) {
-      set({ splitPath: path });
-      return;
-    }
-    set({ splitPath: path });
+    set({ splitPath: path, splitSide: side });
   },
 
   closeSplit() {
