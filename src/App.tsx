@@ -296,6 +296,9 @@ export default function App() {
             )}
           </div>
 
+          {/* 分屏放在主编辑区与右侧边栏之间：中间分屏，大纲始终在最右 */}
+          {splitPath && <SplitPane path={splitPath} onClose={() => closeSplit()} />}
+
           {note && rightOpen && (
             <RightSidebar
               source={note.content}
@@ -324,10 +327,6 @@ export default function App() {
               onClose={() => setRightOpen(false)}
             activeLine={scrollLine}
             />
-          )}
-
-          {splitPath && (
-            <SplitPane path={splitPath} onClose={() => closeSplit()} />
           )}
         </div>
 

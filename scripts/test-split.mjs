@@ -154,6 +154,26 @@ async function main() {
     pass: reading.readingShown === true && reading.editorGone === true,
   });
 
+  // F. 布局顺序：主编辑区 → 分屏 → 右侧边栏
+  const order = await js(`(() => {
+    const ws = document.querySelector('.workspace');
+    if (!ws) return { err: '没有 workspace', cls: [] };
+    const cls = Array.from(ws.children).map(function (k) { return String(k.className || ''); });
+    return {
+      cls: cls,
+      editor: cls.findIndex(function (c) { return c.indexOf('editor-wrap') >= 0; }),
+      split: cls.findIndex(function (c) { return c.indexOf('split-pane') >= 0; }),
+      right: cls.findIndex(function (c) { return c.indexOf('right-sidebar') >= 0; }),
+    };
+  })()`);
+  results.push({
+    label: "F. 分屏在中间，右侧边栏仍在最右",
+    ...order,
+    pass:
+      order.editor >= 0 &&
+      order.split > order.editor &&
+      (order.right === -1 || order.right > order.split),
+  });
   // D. 关闭分屏
   await js(`(() => {
     const pane = document.querySelector('.split-pane');
