@@ -133,10 +133,10 @@ async function main() {
     pass: Array.isArray(wrote) && wrote.some((x) => String(x.text || "").includes("分屏输入测试")),
   });
 
-  // E. 切到阅读模式
+  // E. 切到阅读模式（分屏自己的模式按钮在 split-head 里）
   await js(`(() => {
     const pane = document.querySelector('.split-pane');
-    const btn = Array.from(pane.querySelectorAll('.mode-btn')).find(b => b.textContent.trim() === '阅读');
+    const btn = pane.querySelector('.split-head .pane-mode-btn[data-mode="read"]');
     if (btn) btn.click();
     return true;
   })()`);
@@ -183,7 +183,7 @@ async function main() {
   // D. 关闭分屏
   await js(`(() => {
     const pane = document.querySelector('.split-pane');
-    const btn = Array.from(pane.querySelectorAll('.icon-btn')).find(b => (b.title || '') === '关闭分屏');
+    const btn = pane.querySelector('.tabbar-pane-close');
     if (btn) btn.click();
     return true;
   })()`);

@@ -125,9 +125,9 @@ async function main() {
     }))()`);
 
     results.push({
-      label: "1. 拖动时出现热区",
+      label: "1. 拖动时出现左右两个热区",
       zones,
-      pass: zones === 4,
+      pass: zones === 2,
     });
     results.push({
       label: "2. 松手后右侧出现分屏，标签移动过去",

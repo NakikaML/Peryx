@@ -20,7 +20,6 @@ import {
 import { api } from "@/lib/api";
 import { renderKatexHtml } from "@/lib/markdown";
 import { useStore } from "@/stores/app";
-import type { EditorMode } from "@/lib/types";
 
 interface ButtonDef {
   id: string;
@@ -40,8 +39,6 @@ interface ToolbarContext {
 
 interface Props {
   getView: () => EditorView | null;
-  mode: EditorMode;
-  onModeChange: (mode: EditorMode) => void;
 }
 
 /** 荧光笔图标（高亮） */
@@ -112,7 +109,7 @@ const groups: { id: string; items: ButtonDef[] }[] = [
 
 type DialogKind = "link" | "table" | "math" | "code" | "image";
 
-export function Toolbar({ getView, mode, onModeChange }: Props) {
+export function Toolbar({ getView }: Props) {
   const [dialog, setDialog] = useState<DialogKind | null>(null);
   /** Hₙ 下拉是否展开 */
   const [headingMenu, setHeadingMenu] = useState(false);
@@ -228,33 +225,6 @@ export function Toolbar({ getView, mode, onModeChange }: Props) {
         ))}
 
         <div className="toolbar-spacer" />
-
-        <div className="mode-switch" role="group" aria-label="视图模式">
-          <button
-            className={`mode-btn ${mode === "live" ? "on" : ""}`}
-            title="实时渲染：隐藏 Markdown 符号，直接看到排版效果"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => onModeChange("live")}
-          >
-            实时渲染
-          </button>
-          <button
-            className={`mode-btn ${mode === "source" ? "on" : ""}`}
-            title="源码模式：显示完整 Markdown 语法"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => onModeChange("source")}
-          >
-            源码
-          </button>
-          <button
-            className={`mode-btn ${mode === "read" ? "on" : ""}`}
-            title="阅读模式：只显示排版结果，一个符号都不显示（双击正文回到编辑）"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => onModeChange("read")}
-          >
-            阅读
-          </button>
-        </div>
       </div>
 
       {dialog === "link" && <LinkDialog view={getView()} onClose={() => setDialog(null)} />}

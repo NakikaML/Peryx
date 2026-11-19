@@ -62,8 +62,9 @@ async function main() {
   const results = [];
 
   // ---- 先切到阅读模式 ----
+  // 模式切换现在在笔记顶部（.pane-mode-switch），不在工具栏
   const switched = await js(`(() => {
-    const btn = Array.from(document.querySelectorAll('.mode-btn')).find(b => b.textContent.trim() === '阅读');
+    const btn = document.querySelector('.note-head [data-mode="read"]');
     if (!btn) return { err: '没有「阅读」按钮' };
     btn.click();
     return { ok: true };
@@ -71,7 +72,7 @@ async function main() {
   await sleep(1200);
 
   results.push({
-    label: "F. 工具栏有「阅读」按钮且能切换",
+    label: "F. 笔记顶部有「阅读」按钮且能切换",
     ...switched,
     shown: await js(`!!document.querySelector('.reading-view')`),
     pass: switched.ok === true && (await js(`!!document.querySelector('.reading-view')`)) === true,

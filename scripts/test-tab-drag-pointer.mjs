@@ -138,7 +138,7 @@ async function main() {
     label: "A. 拖动到右边缘 → 热区出现并高亮右侧",
     zoneCount: mid.zoneCount,
     hotZones: mid.hotZones,
-    pass: mid.zoneCount === 4 && mid.hotZones.includes("right"),
+    pass: mid.zoneCount === 2 && mid.hotZones.includes("right"),
   });
 
   // B. 松手 → 分屏在右，标签移动过去
@@ -167,17 +167,18 @@ async function main() {
     pass: afterLeft.workspaceClass.includes("split-left") && afterLeft.paneKids[0] === "split-pane",
   });
 
-  // D. 关掉，拖到下方
+  // D. 关掉，拖到下方 → 上下分屏已下线（v0.3 再做），不应产生分屏
   await js(`(() => { const b = document.querySelector('.tabbar-pane-close'); if (b) b.click(); return true; })()`);
   await sleep(900);
   await dragTabTo("笔记B", 0.5, 0.95);
   const afterBottom = await state();
   const dir = await js(`(() => { const p = document.querySelector('.pane-area'); return p ? getComputedStyle(p).flexDirection : null; })()`);
   results.push({
-    label: "D. 拖到下边缘 → 竖向分屏",
+    label: "D. 拖到下边缘不再产生竖向分屏（上下分屏推迟到 v0.3）",
     workspaceClass: afterBottom.workspaceClass,
     flexDirection: dir,
-    pass: afterBottom.workspaceClass.includes("split-bottom") && dir === "column",
+    zoneCount: afterBottom.zoneCount,
+    pass: !afterBottom.workspaceClass.includes("split-") && dir === "row",
   });
 
   // E. 关掉，拖到中间松手 → 不产生分屏

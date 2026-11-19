@@ -19,6 +19,7 @@ import { ReadingView } from "@/components/ReadingView";
 import { TabBar } from "@/components/TabBar";
 import { SplitPane } from "@/components/SplitPane";
 import { SplitDropZones } from "@/components/SplitDropZones";
+import { PaneModeSwitch } from "@/components/PaneModeSwitch";
 import { endTabDrag, subscribeTabDrag, zoneAt } from "@/lib/tabDrag";
 import type { SplitSide, TabDragState } from "@/lib/tabDrag";
 import { applySettings, defaultSettings, loadSettings, matchShortcut } from "@/lib/settings";
@@ -267,7 +268,7 @@ export default function App() {
       )}
 
       <main className="main">
-        <Toolbar getView={getView} mode={mode} onModeChange={setMode} />
+        <Toolbar getView={getView} />
 
         <div className={`workspace ${splitPath ? `split-${splitSide}` : ""}`}>
           <div className="pane-area">
@@ -284,6 +285,7 @@ export default function App() {
                   {!hasOwnH1 && <h1 className="note-title">{note.title}</h1>}
                   {hasOwnH1 && <span />}
                   <div className="note-head-actions">
+                    <PaneModeSwitch mode={mode} onChange={setMode} />
                     <button
                       className={`icon-btn ${showLineNumbers ? "on" : ""}`}
                       title="显示行号"

@@ -168,7 +168,7 @@ function FolderSelectedMock() {
         </div>
       </aside>
       <main className="main">
-        <Toolbar getView={() => null} mode="live" onModeChange={() => {}} />
+        <Toolbar getView={() => null} />
         <div className="workspace">
           <div className="editor-wrap">
             <div className="empty-state">
@@ -608,7 +608,7 @@ function ShellPreview() {
         onOpenSettings={() => {}}
       />
       <main className="main">
-        <Toolbar getView={() => ref.current?.view ?? null} mode="live" onModeChange={() => {}} />
+        <Toolbar getView={() => ref.current?.view ?? null} />
         <div className="workspace">
           <div className="editor-wrap">
             <MarkdownEditor
@@ -1212,7 +1212,7 @@ function Preview() {
   const query = new URLSearchParams(location.search);
   const page = query.get("page");
   const initialMode = (query.get("mode") === "source" ? "source" : "live") as EditorMode;
-  const [mode, setMode] = React.useState<EditorMode>(initialMode);
+  const [mode] = React.useState<EditorMode>(initialMode);
   const [content, setContent] = React.useState(SAMPLE);
   const ref = React.useRef<EditorView | null>(null);
 
@@ -1272,7 +1272,7 @@ function Preview() {
   return (
     <div className="app" style={{ height: "100vh" }}>
       <main className="main">
-        <Toolbar getView={() => ref.current} mode={mode} onModeChange={setMode} />
+        <Toolbar getView={() => ref.current} />
         <div className="workspace">
           <div className="editor-wrap">
             <div className="note-head">

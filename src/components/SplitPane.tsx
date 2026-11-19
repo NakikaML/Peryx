@@ -14,6 +14,7 @@ import { ReadingView } from "@/components/ReadingView";
 import type { EditorMode } from "@/lib/types";
 import type { SplitSide } from "@/lib/tabDrag";
 import { TabStrip } from "@/components/TabStrip";
+import { PaneModeSwitch } from "@/components/PaneModeSwitch";
 import { useStore } from "@/stores/app";
 
 interface Props {
@@ -113,32 +114,9 @@ export function SplitPane({ path, side = "right", onClose }: Props) {
           ⬒ {title}
         </span>
         <div className="split-actions">
-          <button
-            className={`mode-btn ${mode === "live" ? "on" : ""}`}
-            title="实时渲染"
-            onClick={() => setMode("live")}
-          >
-            实时
-          </button>
-          <button
-            className={`mode-btn ${mode === "source" ? "on" : ""}`}
-            title="源码"
-            onClick={() => setMode("source")}
-          >
-            源码
-          </button>
-          <button
-            className={`mode-btn ${mode === "read" ? "on" : ""}`}
-            title="阅读"
-            onClick={() => setMode("read")}
-          >
-            阅读
-          </button>
+          <PaneModeSwitch mode={mode} onChange={setMode} compact />
           <button className="icon-btn" title="保存" onClick={saveNow}>
             💾
-          </button>
-          <button className="icon-btn" title="关闭分屏" onClick={onClose}>
-            ✕
           </button>
         </div>
       </div>
