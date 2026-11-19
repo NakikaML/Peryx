@@ -8,6 +8,7 @@
  */
 
 import { api } from "@/lib/api";
+import { applyTheme, DEFAULT_THEME_ID } from "@/lib/theme";
 
 /** 可自定义外观的元素 */
 export interface StyleRule {
@@ -54,6 +55,8 @@ export type ShortcutAction =
   | "refresh";
 
 export interface Settings {
+  /** 主题预设 id（见 lib/theme.ts） */
+  theme: string;
   /** 编辑器正文字号（px） */
   fontSize: number;
   /** 行高倍数 */
@@ -121,7 +124,8 @@ export function defaultSettings(): Settings {
   const styles = {} as Record<StyleKey, StyleRule>;
   for (const { key } of STYLE_LABELS) styles[key] = defaultRule();
   return {
-    fontSize: 16,
+    theme: DEFAULT_THEME_ID,
+    fontSize: 18,
     lineHeight: 1.75,
     styles,
     shortcuts: { ...DEFAULT_SHORTCUTS },
@@ -134,6 +138,7 @@ export function normalizeSettings(raw: unknown): Settings {
   if (!raw || typeof raw !== "object") return base;
   const s = raw as Partial<Settings>;
   const out: Settings = {
+    theme: typeof s.theme === "string" && s.theme ? s.theme : base.theme,
     fontSize: typeof s.fontSize === "number" && s.fontSize >= 10 && s.fontSize <= 32 ? s.fontSize : base.fontSize,
     lineHeight:
       typeof s.lineHeight === "number" && s.lineHeight >= 1 && s.lineHeight <= 3
@@ -183,8 +188,13 @@ const VAR_PREFIX: Record<StyleKey, string> = {
   link: "--md-link",
 };
 
+/** 主题会自带配色的元素：用户没自定义颜色时必须保留主题色 */
+const THEME_COLORED: StyleKey[] = ["h1", "h2", "h3"];
+
 /** 把设置写入 document 根元素的 CSS 变量，编辑器样式直接读取 */
 export function applySettings(s: Settings) {
+  // 先铺主题底色，下面的自定义样式会覆盖同名变量
+  applyTheme(s.theme);
   const root = document.documentElement;
   root.style.setProperty("--editor-font-size", `${s.fontSize}px`);
   root.style.setProperty("--editor-line-height", String(s.lineHeight));
@@ -192,7 +202,13 @@ export function applySettings(s: Settings) {
   for (const key of Object.keys(VAR_PREFIX) as StyleKey[]) {
     const rule = s.styles[key];
     const p = VAR_PREFIX[key];
-    root.style.setProperty(`${p}-color`, rule.color || "inherit");
+    if (rule.color) {
+      root.style.setProperty(`${p}-color`, rule.color);
+    } else if (THEME_COLORED.includes(key)) {
+      // 主题已经给标题配好颜色，这里不能覆盖成 inherit
+    } else {
+      root.style.setProperty(`${p}-color`, "inherit");
+    }
     root.style.setProperty(`${p}-font`, rule.fontFamily || "inherit");
     root.style.setProperty(`${p}-scale`, String(rule.scale || 1));
     root.style.setProperty(`${p}-weight`, rule.bold ? "700" : "inherit");

@@ -200,12 +200,20 @@ async function main() {
     })()`);
 
     results.push({
-      label: "E. 设置面板打开且有三个页签",
+      label: "E. 设置面板打开且有四个页签",
       ...opened,
-      pass: opened.exists === true && opened.tabs.length === 3,
+      pass: opened.exists === true && opened.tabs.length === 4,
     });
 
     // 改字号 → CSS 变量即时更新
+    // 先切到「字号」页签并等 React 渲染完（默认页签是「主题」）
+    await js(`(() => {
+      const tabBtn = Array.from(document.querySelectorAll('.settings-tab')).find(e => e.textContent.trim() === '字号');
+      if (tabBtn) tabBtn.click();
+      return true;
+    })()`);
+    await new Promise((r) => setTimeout(r, 500));
+
     const changed = await js(`(() => {
       const slider = document.querySelector('.settings-section input[type=range]');
       if (!slider) return { err: 'no slider' };

@@ -17,6 +17,7 @@ import {
   type StyleRule,
 } from "@/lib/settings";
 import { errText } from "@/lib/api";
+import { DEFAULT_THEME_ID, THEME_PRESETS, getPreset } from "@/lib/theme";
 import { useStore } from "@/stores/app";
 
 interface Props {
@@ -25,7 +26,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Tab = "font" | "style" | "keys";
+type Tab = "theme" | "font" | "style" | "keys";
 
 /** 字体候选（中西文各给几个稳妥的） */
 const FONT_OPTIONS = [
@@ -57,7 +58,7 @@ function comboFromEvent(e: KeyboardEvent): string | null {
 }
 
 export function SettingsPanel({ settings, onChange, onClose }: Props) {
-  const [tab, setTab] = useState<Tab>("font");
+  const [tab, setTab] = useState<Tab>("theme");
   const [draft, setDraft] = useState<Settings>(settings);
   /** 正在录制快捷键的动作 */
   const [recording, setRecording] = useState<ShortcutAction | null>(null);
@@ -101,7 +102,10 @@ export function SettingsPanel({ settings, onChange, onClose }: Props) {
   };
 
   const resetCurrentTab = () => {
-    if (tab === "keys") {
+    if (tab === "theme") {
+      update({ theme: DEFAULT_THEME_ID });
+      toast("已恢复默认主题", "success");
+    } else if (tab === "keys") {
       update({ shortcuts: { ...DEFAULT_SHORTCUTS } });
       toast("快捷键已恢复默认", "success");
     } else if (tab === "style") {
@@ -149,6 +153,9 @@ export function SettingsPanel({ settings, onChange, onClose }: Props) {
         <div className="settings-head">
           <span className="settings-title">设置</span>
           <div className="settings-tabs">
+            <button className={`settings-tab ${tab === "theme" ? "active" : ""}`} onClick={() => setTab("theme")}>
+              主题
+            </button>
             <button className={`settings-tab ${tab === "font" ? "active" : ""}`} onClick={() => setTab("font")}>
               字号
             </button>
@@ -165,6 +172,107 @@ export function SettingsPanel({ settings, onChange, onClose }: Props) {
         </div>
 
         <div className="settings-body">
+          {tab === "theme" && (
+            <div className="settings-section">
+              <div className="settings-note" style={{ marginTop: 0 }}>
+                选一个预设作为整体配色；「样式」页可以在此基础上再改单个元素的颜色与字体。
+              </div>
+
+              <div className="theme-grid">
+                {THEME_PRESETS.map((p) => {
+                  const selected = draft.theme === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      data-theme-id={p.id}
+                      className={`theme-card ${selected ? "selected" : ""}`}
+                      onClick={() =>
+                        update({
+                          theme: p.id,
+                          // 预设顺带给出建议字号，方便一键接近 Obsidian 观感
+                          ...(p.fontSize ? { fontSize: p.fontSize } : {}),
+                          ...(p.lineHeight ? { lineHeight: p.lineHeight } : {}),
+                        })
+                      }
+                    >
+                      <span className="theme-preview" aria-hidden="true">
+                        <span
+                          className="theme-preview-side"
+                          style={{ background: p.vars.bgPanel, borderColor: p.vars.border }}
+                        />
+                        <span
+                          className="theme-preview-main"
+                          style={{ background: p.vars.bgEditor }}
+                        >
+                          <span
+                            className="theme-preview-line"
+                            style={{ background: p.vars.fg, width: "70%" }}
+                          />
+                          <span
+                            className="theme-preview-line"
+                            style={{ background: p.vars.fgMuted, width: "88%" }}
+                          />
+                          <span
+                            className="theme-preview-line"
+                            style={{ background: p.vars.accent, width: "45%" }}
+                          />
+                        </span>
+                      </span>
+                      <span className="theme-meta">
+                        <span className="theme-name">
+                          {p.name}
+                          {p.dark && <span className="theme-badge">深色</span>}
+                          {selected && <span className="theme-check">✓</span>}
+                        </span>
+                        <span className="theme-hint">{p.hint}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="settings-preview" style={{ marginTop: 12 }}>
+                <div className="settings-preview-title">
+                  预览 · {getPreset(draft.theme).name}
+                </div>
+                <div
+                  style={{
+                    background: getPreset(draft.theme).vars.bgEditor,
+                    color: getPreset(draft.theme).vars.fg,
+                    border: `1px solid ${getPreset(draft.theme).vars.border}`,
+                    borderRadius: 8,
+                    padding: "12px 14px",
+                    fontSize: draft.fontSize,
+                    lineHeight: draft.lineHeight,
+                  }}
+                >
+                  <div
+                    style={{
+                      color: getPreset(draft.theme).vars.headingColors?.[0] ?? getPreset(draft.theme).vars.accent,
+                      fontWeight: 700,
+                      fontSize: "1.25em",
+                      marginBottom: 6,
+                    }}
+                  >
+                    一级标题
+                  </div>
+                  <div style={{ marginBottom: 6 }}>正文文字，用来感受配色是否舒服。</div>
+                  <span
+                    style={{
+                      color: getPreset(draft.theme).vars.accent,
+                      background: getPreset(draft.theme).vars.accentSoft,
+                      padding: "1px 8px",
+                      borderRadius: 10,
+                      fontSize: "0.86em",
+                    }}
+                  >
+                    标签
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {tab === "font" && (
             <div className="settings-section">
               <label className="settings-row">
