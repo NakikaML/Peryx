@@ -36,6 +36,7 @@ import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 
 import { livePreview, setLivePreview, livePreviewEnabled } from "./livePreview";
+import { wikiCompletion } from "./wikiComplete";
 import { linkClickHandler, linkCursorHandler } from "./linkHandler";
 import { peryxTheme } from "./theme";
 import type { EditorMode } from "@/lib/types";
@@ -128,6 +129,7 @@ export const MarkdownEditor = forwardRef<EditorHandle, Props>(function MarkdownE
         indentOnInput(),
         bracketMatching(),
         closeBrackets(),
+        wikiCompletion,
         rectangularSelection(),
         crosshairCursor(),
         highlightActiveLine(),
