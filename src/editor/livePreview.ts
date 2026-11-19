@@ -27,6 +27,7 @@ import type { DecorationSet } from "@codemirror/view";
 import { RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
 import type { EditorState, Extension, Transaction } from "@codemirror/state";
 import { renderKatexHtml, renderInline } from "@/lib/markdown";
+import { linkTargetExists, resolveLinkTarget } from "@/lib/linkCache";
 
 /** 开关实时渲染（源码模式时置为 false） */
 export const setLivePreview = StateEffect.define<boolean>();
@@ -388,6 +389,52 @@ class TaskCheckbox extends WidgetType {
   }
 }
 
+/**
+ * 双链 `[[目标]]` / `[[目标|别名]]` 的渲染结果。
+ *
+ * 目标存在 → 普通链接样式，点击跳转。
+ * 目标不存在 → 「待创建」样式（虚线边框），点击新建并打开。
+ *
+ * 点击事件由编辑器级的 `wikiLinkHandler` 统一处理（见文件末尾），
+ * 因为 CodeMirror 会在 widget 外层包 buffer，局部监听不可靠。
+ */
+class WikiLinkWidget extends WidgetType {
+  constructor(
+    readonly target: string,
+    readonly alias: string | null,
+    readonly from: number,
+    readonly to: number,
+  ) {
+    super();
+  }
+  eq(other: WikiLinkWidget): boolean {
+    return (
+      other.target === this.target &&
+      other.alias === this.alias &&
+      other.from === this.from &&
+      // 目标是否存在会影响样式，缓存刷新后需要重建
+      linkTargetExists(other.target) === linkTargetExists(this.target)
+    );
+  }
+  toDOM(): HTMLElement {
+    const exists = linkTargetExists(this.target);
+    const el = document.createElement("span");
+    el.className = exists ? "cm-wikilink" : "cm-wikilink cm-wikilink-missing";
+    el.textContent = this.alias ?? this.target;
+    el.dataset.wikiTarget = this.target;
+    el.dataset.wikiFrom = String(this.from);
+    el.dataset.wikiTo = String(this.to);
+    el.title = exists
+      ? `跳转到「${this.target}」`
+      : `「${this.target}」还不存在，点击创建`;
+    return el;
+  }
+  ignoreEvent(): boolean {
+    // 交给编辑器级 handler，否则 CodeMirror 会把点击当光标定位
+    return false;
+  }
+}
+
 /** 行内公式渲染结果 */
 class InlineMathWidget extends WidgetType {
   constructor(readonly tex: string) {
@@ -433,6 +480,8 @@ const inlineCodeDeco = Decoration.mark({ class: "cm-inline-code" });
 const inlineCodeActiveDeco = Decoration.mark({ class: "cm-inline-code cm-inline-code-active" });
 const linkTextDeco = Decoration.mark({ class: "cm-link-text" });
 const mathDeco = Decoration.mark({ class: "cm-math-text" });
+/** 双链源码（光标在本行时显示 `[[目标]]` 原文） */
+const wikiSourceDeco = Decoration.mark({ class: "cm-wikilink-source" });
 const doneContentDeco = Decoration.mark({ class: "cm-task-done-content" });
 
 interface Pending {
@@ -450,6 +499,32 @@ function buildDecorations(state: EditorState): DecorationSet {
 
   const doc = state.doc;
   const pending: Pending[] = [];
+
+  /**
+   * 代码块行号集合（含围栏行）。
+   * 双链、行内公式都跳过这些行，避免把代码里的 `[[x]]`、`$a$` 当语法。
+   */
+  const inFenceLines = new Set<number>();
+  {
+    let fenceChar: string | null = null;
+    for (let n = 1; n <= doc.lines; n++) {
+      const t = doc.line(n).text.trimStart();
+      const m = /^(`{3,}|~{3,})/.exec(t);
+      if (m) {
+        const ch = m[1][0];
+        if (fenceChar === null) {
+          fenceChar = ch;
+          inFenceLines.add(n);
+          continue;
+        } else if (fenceChar === ch) {
+          fenceChar = null;
+          inFenceLines.add(n);
+          continue;
+        }
+      }
+      if (fenceChar !== null) inFenceLines.add(n);
+    }
+  }
 
   const pushLine = (from: number, deco: Decoration) => pending.push({ from, to: from, deco });
   const mark = (from: number, to: number, deco: Decoration) => {
@@ -758,6 +833,61 @@ function buildDecorations(state: EditorState): DecorationSet {
     }
   }
 
+  // ---- 4.5 双链 [[目标]] / [[目标|别名]] ----
+  // 放在行内公式之前：`[[a$b$]]` 应整体当链接，而不是把 `$b$` 当公式
+  for (let n = 1; n <= doc.lines; n++) {
+    const line = doc.line(n);
+    const text = line.text;
+    // 代码行不解析双链
+    if (/^\s*(`{3,}|~{3,})/.test(text)) continue;
+    if (inFenceLines.has(n)) continue;
+    const active = isActivePos(line.from);
+
+    let i = 0;
+    while (i + 1 < text.length) {
+      if (text[i] !== "[" || text[i + 1] !== "[") {
+        i++;
+        continue;
+      }
+      const close = text.indexOf("]]", i + 2);
+      if (close < 0) break;
+      const inner = text.slice(i + 2, close);
+      // 中间不允许再出现 [[
+      if (inner.includes("[[")) {
+        i += 2;
+        continue;
+      }
+      const trimmed = inner.trim();
+      if (!trimmed) {
+        i = close + 2;
+        continue;
+      }
+      const bar = trimmed.indexOf("|");
+      const target = (bar >= 0 ? trimmed.slice(0, bar) : trimmed).trim();
+      const alias = bar >= 0 ? trimmed.slice(bar + 1).trim() : "";
+      if (!target) {
+        i = close + 2;
+        continue;
+      }
+
+      const from = line.from + i;
+      const to = line.from + close + 2;
+      if (active) {
+        // 光标在本行：显示源码，方便改目标名
+        mark(from, to, wikiSourceDeco);
+      } else {
+        pending.push({
+          from,
+          to,
+          deco: Decoration.replace({
+            widget: new WikiLinkWidget(target, alias || null, from, to),
+          }),
+        });
+      }
+      i = close + 2;
+    }
+  }
+
   // ---- 5. 行内公式 $...$ ----
   for (let n = 1; n <= doc.lines; n++) {
     const line = doc.line(n);
@@ -820,6 +950,63 @@ function buildDecorations(state: EditorState): DecorationSet {
 const decorativeTextDeco = Decoration.mark({ class: "cm-ordered-num" });
 
 // ---------------------------------------------------------------------------
+// 双链点击：跳转 / 创建
+// ---------------------------------------------------------------------------
+
+/** 由 App 层注册的动作（避免编辑器直接依赖 store） */
+interface WikiActions {
+  /** 打开已存在的笔记 */
+  open: (path: string) => void;
+  /** 目标不存在时新建并打开 */
+  create: (target: string) => void;
+}
+
+let wikiActions: WikiActions | null = null;
+
+/** 注册双链动作（App 挂载时调用一次） */
+export function registerWikiActions(actions: WikiActions) {
+  wikiActions = actions;
+}
+
+/**
+ * 双链点击处理器。
+ *
+ * 用编辑器级 `domEventHandlers` 而不是 widget 内 `addEventListener`：
+ * CodeMirror 会在 widget 外层包 `cm-widgetBuffer` 并接管鼠标事件，
+ * widget 内部的监听经常收不到（任务复选框踩过同样的坑）。
+ */
+const wikiLinkHandler = EditorView.domEventHandlers({
+  mousedown(event, view) {
+    const target = event.target as HTMLElement | null;
+    const el = target?.closest?.(".cm-wikilink") as HTMLElement | null;
+    if (!el) return false;
+
+    const name = el.dataset.wikiTarget ?? "";
+    const from = Number(el.dataset.wikiFrom);
+    const to = Number(el.dataset.wikiTo);
+    if (!name) return false;
+
+    // Ctrl / Cmd + 点击 = 进入编辑（把光标放到链接源码里）
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      view.dispatch({ selection: { anchor: from } });
+      view.focus();
+      return true;
+    }
+
+    event.preventDefault();
+    const path = resolveLinkTarget(name);
+    if (path) {
+      wikiActions?.open(path);
+    } else {
+      wikiActions?.create(name);
+    }
+    void to;
+    return true;
+  },
+});
+
+// ---------------------------------------------------------------------------
 // StateField
 // ---------------------------------------------------------------------------
 
@@ -849,6 +1036,7 @@ export const livePreview: Extension = [
   livePreviewEnabled,
   livePreviewField,
   taskCheckboxHandler,
+  wikiLinkHandler,
   EditorView.atomicRanges.of(
     (view) => view.state.field(livePreviewField, false) ?? Decoration.none,
   ),

@@ -7,11 +7,14 @@ import ReactDOM from "react-dom/client";
 import { EditorView } from "@codemirror/view";
 import { Welcome } from "@/components/Welcome";
 import { MarkdownEditor } from "@/editor/MarkdownEditor";
+import type { EditorHandle } from "@/editor/MarkdownEditor";
 import { Toolbar } from "@/components/Toolbar";
 import { Outline } from "@/components/Outline";
 import { Toasts } from "@/components/Toasts";
 import { Sidebar } from "@/components/Sidebar";
 import { useStore } from "@/stores/app";
+import { setLinkIndex } from "@/lib/linkCache";
+import { registerWikiActions } from "@/editor/livePreview";
 
 // 调试/自动化测试用：把 store 暴露到 window
 (window as unknown as Record<string, unknown>).__STORE__ = { useStore };
@@ -166,6 +169,85 @@ function SidebarMock() {
   );
 }
 
+/** 双链渲染测试页：预置一批 [[链接]] 并注入存在的笔记名 */
+function WikiLinkPreview() {
+  const ref = React.useRef<EditorHandle | null>(null);
+
+  React.useEffect(() => {
+    // 假定这些笔记存在；其余判为「待创建」
+    setLinkIndex([
+      {
+        path: "微积分基础.md",
+        title: "微积分基础",
+        tags: [],
+        links: [],
+        mtimeMs: 0,
+        size: 0,
+      },
+      {
+        path: "法学/民法典导论.md",
+        title: "民法典导论",
+        tags: [],
+        links: [],
+        mtimeMs: 0,
+        size: 0,
+      },
+    ]);
+    registerWikiActions({
+      open: (p) => {
+        (window as any).__WIKI_OPENED__ = p;
+      },
+      create: (n) => {
+        (window as any).__WIKI_CREATED__ = n;
+      },
+    });
+  }, []);
+
+  const sample = [
+    "# 双链测试",
+    "",
+    "链接到已存在的笔记：[[微积分基础]]",
+    "",
+    "带别名的链接：[[微积分基础|别名文字]]",
+    "",
+    "另一个已存在的：[[民法典导论]]",
+    "",
+    "指向不存在笔记的：[[还没有的笔记]]",
+    "",
+    "行内代码里的不算：`[[不该渲染]]`",
+    "",
+    "代码块里的也不算：",
+    "",
+    "```",
+    "[[代码块里的链接]]",
+    "```",
+    "",
+  ].join("\n");
+
+  return (
+    <div className="app" style={{ height: "100vh" }}>
+      <main className="main">
+        <div className="workspace">
+          <div className="editor-wrap">
+            <MarkdownEditor
+              ref={(h) => {
+                (window as any).__EDITOR_HANDLE__ = h;
+                ref.current = h;
+              }}
+              docPath="wikilink-test.md"
+              value={sample}
+              mode="live"
+              showLineNumbers={false}
+              onChange={() => {}}
+              onSave={() => {}}
+            />
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
 function Preview() {
   const query = new URLSearchParams(location.search);
   const page = query.get("page");
@@ -177,6 +259,7 @@ function Preview() {
   if (page === "welcome") return <Welcome />;
   if (page === "folder") return <FolderSelectedMock />;
   if (page === "sidebar") return <SidebarMock />;
+  if (page === "wikilink") return <WikiLinkPreview />;
 
   React.useEffect(() => {
     let cancelled = false;

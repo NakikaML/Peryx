@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { api, errText } from "@/lib/api";
+import { clearLinkIndex, refreshLinkIndex } from "@/lib/linkCache";
 import type {
   ChildrenMap,
   EditorMode,
@@ -132,6 +133,9 @@ export const useStore = create<AppStore>((set, get) => ({
     }
     // 无论是否恢复成功，都刷新一次最近列表（供切换菜单使用）
     await get().loadRecent();
+    // 索引在 open_vault 时由后端构建，这里同步一份到前端缓存
+    if (get().vault) await refreshLinkIndex();
+    else clearLinkIndex();
   },
 
   setVault(v) {
@@ -151,6 +155,7 @@ export const useStore = create<AppStore>((set, get) => ({
     } catch {
       /* 忽略 */
     }
+    clearLinkIndex();
     get().setVault(null);
     await get().loadRecent();
   },
@@ -331,6 +336,8 @@ export const useStore = create<AppStore>((set, get) => ({
     try {
       await api.writeNote(note.path, note.content);
       set((s) => (s.note ? { note: { ...s.note, dirty: false } } : {}));
+      // 标题 / 标签 / 双链可能变了，刷新前端链接缓存（后端已增量更新索引）
+      void refreshLinkIndex();
     } catch (e) {
       get().toast(errText(e), "error");
     }

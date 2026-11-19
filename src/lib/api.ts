@@ -1,7 +1,16 @@
 /** Tauri 后端命令的 TypeScript 封装。 */
 
 import { invoke } from "@tauri-apps/api/core";
-import type { FileNode, VaultInfo } from "./types";
+import type {
+  ContextHit,
+  FileNode,
+  IndexStats,
+  LinkRef,
+  NoteHit,
+  NoteMeta,
+  TagCount,
+  VaultInfo,
+} from "./types";
 
 /** 是否运行在 Tauri 环境（浏览器里调试时为 false） */
 export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -63,6 +72,40 @@ export const api = {
 
   /** 获取笔记库绝对路径 */
   revealVault: () => invoke<string>("reveal_vault"),
+
+  // ---- v0.2 知识连接 ----
+
+  /** 重建索引 */
+  rebuildIndex: () => invoke<IndexStats>("rebuild_index"),
+
+  /** 索引统计 */
+  indexStats: () => invoke<IndexStats>("index_stats"),
+
+  /** 按标题 / 路径模糊搜索笔记（Ctrl+P） */
+  searchTitles: (query: string, limit?: number) =>
+    invoke<NoteHit[]>("search_titles", { query, limit }),
+
+  /** 全文搜索（Ctrl+Shift+F） */
+  searchContent: (query: string, limit?: number) =>
+    invoke<ContextHit[]>("search_content", { query, limit }),
+
+  /** 反向链接：哪些笔记引用了它 */
+  getBacklinks: (relPath: string) => invoke<ContextHit[]>("get_backlinks", { relPath }),
+
+  /** 所有标签与计数 */
+  getAllTags: () => invoke<TagCount[]>("get_all_tags"),
+
+  /** 带某个标签的笔记 */
+  getNotesWithTag: (tag: string) => invoke<NoteMeta[]>("get_notes_with_tag", { tag }),
+
+  /** `[[目标]]` → 笔记路径；不存在返回 null */
+  resolveLink: (target: string) => invoke<string | null>("resolve_link", { target }),
+
+  /** 所有笔记元信息（双链补全、标签视图用） */
+  listAllNotes: () => invoke<NoteMeta[]>("list_all_notes"),
+
+  /** 某篇笔记的出链 */
+  getOutlinks: (relPath: string) => invoke<LinkRef[]>("get_outlinks", { relPath }),
 };
 
 /** 把后端错误整理成可读文本 */

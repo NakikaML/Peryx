@@ -11,6 +11,8 @@ import { StatusBar } from "@/components/StatusBar";
 import { Toasts } from "@/components/Toasts";
 import { Outline } from "@/components/Outline";
 import { useStore } from "@/stores/app";
+import { registerWikiActions } from "@/editor/livePreview";
+import { refreshLinkIndex } from "@/lib/linkCache";
 
 const AUTOSAVE_MS = 800;
 
@@ -44,6 +46,26 @@ export default function App() {
   useEffect(() => {
     void loadVault();
   }, [loadVault]);
+
+  // 注册双链点击动作（跳转已存在的笔记 / 新建缺失的笔记）
+  useEffect(() => {
+    registerWikiActions({
+      open: (path) => {
+        void useStore.getState().openNote(path);
+      },
+      create: (target) => {
+        const st = useStore.getState();
+        void (async () => {
+          // 新建在当前笔记所在目录，避免散落到根目录
+          const dir = st.note?.path.includes("/")
+            ? st.note.path.slice(0, st.note.path.lastIndexOf("/"))
+            : "";
+          await st.createNote(dir, target);
+          await refreshLinkIndex();
+        })();
+      },
+    });
+  }, []);
 
   // 自动保存
   useEffect(() => {
