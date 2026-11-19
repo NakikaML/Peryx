@@ -13,6 +13,8 @@ import { api, errText } from "@/lib/api";
 import { ReadingView } from "@/components/ReadingView";
 import type { EditorMode } from "@/lib/types";
 import type { SplitSide } from "@/lib/tabDrag";
+import { TabStrip } from "@/components/TabStrip";
+import { useStore } from "@/stores/app";
 
 interface Props {
   path: string;
@@ -35,6 +37,9 @@ export function SplitPane({ path, side = "right", onClose }: Props) {
   const timerRef = useRef<number | null>(null);
 
   const title = path.replace(/\.md$/i, "").split("/").pop() ?? path;
+  const splitTabs = useStore((s) => s.splitTabs);
+  const activateSplitTab = useStore((s) => s.activateSplitTab);
+  const closeSplitTab = useStore((s) => s.closeSplitTab);
 
   // 读盘
   useEffect(() => {
@@ -94,6 +99,15 @@ export function SplitPane({ path, side = "right", onClose }: Props) {
 
   return (
     <div className={`split-pane split-${side}`}>
+      <TabStrip
+        pane="side"
+        tabs={splitTabs}
+        activePath={path}
+        onActivate={(p) => activateSplitTab(p)}
+        onClose={(p) => closeSplitTab(p)}
+        onClosePane={onClose}
+      />
+
       <div className="split-head">
         <span className="split-title" title={path}>
           ⬒ {title}

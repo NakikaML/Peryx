@@ -2374,6 +2374,40 @@ button.link-item:hover {
   cursor: grabbing;
 }
 
+/* 分屏里的标签栏：比主面板更紧凑 */
+.split-pane .tabbar {
+  background: var(--bg-editor);
+}
+
+.split-pane .tab {
+  padding: 5px 6px 5px 10px;
+  min-width: 78px;
+  max-width: 160px;
+  font-size: 12px;
+  border-top-width: 2px;
+}
+
+.tabbar {
+  display: flex;
+  align-items: stretch;
+}
+
+.tabbar-pane-close {
+  border: none;
+  background: none;
+  color: var(--fg-faint);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 10px;
+  border-left: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.tabbar-pane-close:hover {
+  background: rgba(184, 73, 60, 0.12);
+  color: var(--danger);
+}
+
 /* ---- 拖拽排序 ---- */
 
 .tree-item.dragging {

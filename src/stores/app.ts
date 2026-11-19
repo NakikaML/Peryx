@@ -56,10 +56,18 @@ interface AppStore {
   tabs: NoteTab[];
   /** 分屏里打开的笔记路径，null 表示未分屏 */
   splitPath: string | null;
+  /** 分屏（副面板）自己的标签页 */
+  splitTabs: NoteTab[];
   /** 分屏位置：左右为横排，上下为竖排 */
   splitSide: SplitSide;
   /** 在分屏里打开笔记 */
   openInSplit: (path: string, side?: SplitSide) => void;
+  /** 把标签页移动到分屏（从主面板移除，不复制） */
+  moveTabToSplit: (path: string, side: SplitSide) => void;
+  /** 切换分屏里的标签 */
+  activateSplitTab: (path: string) => void;
+  /** 关闭分屏里的某个标签 */
+  closeSplitTab: (path: string) => void;
   /** 关闭分屏 */
   closeSplit: () => void;
   /** 正在预览的图片（相对路径），null 表示未预览图片 */
@@ -165,6 +173,7 @@ export const useStore = create<AppStore>((set, get) => ({
   note: null,
   tabs: [],
   splitPath: null,
+  splitTabs: [],
   splitSide: "right" as SplitSide,
   imagePreview: null,
   mode: "live",
@@ -202,6 +211,7 @@ export const useStore = create<AppStore>((set, get) => ({
       note: null,
       tabs: [],
       splitPath: null,
+      splitTabs: [],
       splitSide: "right" as SplitSide,
       imagePreview: null,
       selectedPath: null,
@@ -427,11 +437,70 @@ export const useStore = create<AppStore>((set, get) => ({
       get().toast(`「${path}」不是笔记文件`, "error");
       return;
     }
-    set({ splitPath: path, splitSide: side });
+    const tabs = get().splitTabs;
+    const nextTabs = tabs.some((t) => t.path === path)
+      ? tabs
+      : [...tabs, { path, title: titleOf(path) }];
+    set({ splitPath: path, splitTabs: nextTabs, splitSide: side });
   },
 
+  /**
+   * 把标签页**移动**到分屏（不是复制）。
+   *
+   * 这是拖拽分屏的关键：之前只 set splitPath，
+   * 主面板的标签还在，于是同一篇笔记同时出现在两边的标签栏里。
+   */
+  moveTabToSplit(path, side) {
+    const tabs = get().tabs;
+    const rest = tabs.filter((t) => t.path !== path);
+    const splitTabs = get().splitTabs;
+    const nextSplitTabs = splitTabs.some((t) => t.path === path)
+      ? splitTabs
+      : [...splitTabs, { path, title: titleOf(path) }];
+
+    const wasActive = get().note?.path === path;
+    set({ splitSide: side, splitTabs: nextSplitTabs, splitPath: path, tabs: rest });
+
+    if (wasActive) {
+      // 主面板让出这篇笔记：切到剩下的最后一个标签，没有就空着
+      const next = rest[rest.length - 1] ?? null;
+      set({ note: null, imagePreview: null });
+      if (next) void get().openNote(next.path);
+      else set({ selectedPath: null, selectedIsDir: false });
+    }
+  },
+
+  activateSplitTab(path) {
+    if (!get().splitTabs.some((t) => t.path === path)) return;
+    set({ splitPath: path });
+  },
+
+  closeSplitTab(path) {
+    const rest = get().splitTabs.filter((t) => t.path !== path);
+    if (rest.length === 0) {
+      set({ splitTabs: [], splitPath: null });
+      return;
+    }
+    const wasActive = get().splitPath === path;
+    set({ splitTabs: rest });
+    if (wasActive) set({ splitPath: rest[rest.length - 1].path });
+  },
+
+  /**
+   * 关闭分屏：把分屏里的标签**还回主面板**，别让笔记凭空消失。
+   * 主面板原本没有打开笔记时，自动打开还回来的最后一个。
+   */
   closeSplit() {
-    set({ splitPath: null });
+    const splitTabs = get().splitTabs;
+    const merged = [...get().tabs];
+    for (const t of splitTabs) {
+      if (!merged.some((m) => m.path === t.path)) merged.push(t);
+    }
+    const hadNote = !!get().note;
+    set({ splitPath: null, splitTabs: [], tabs: merged });
+    if (!hadNote && merged.length > 0) {
+      void get().openNote(merged[merged.length - 1].path);
+    }
   },
 
   showImage(path) {

@@ -5,13 +5,16 @@
  * 所以用一个模块级变量记住「正在拖哪个标签」，供拖放热区判断。
  */
 
-let dragging: string | null = null;
+/** 面板标识：主面板 / 分屏 */
+export type PaneId = "main" | "side";
 
-export function setDraggingTab(path: string | null) {
-  dragging = path;
+let dragging: { path: string; pane: PaneId } | null = null;
+
+export function setDraggingTab(path: string | null, pane: PaneId | null) {
+  dragging = path && pane ? { path, pane } : null;
 }
 
-export function getDraggingTab(): string | null {
+export function getDraggingTab(): { path: string; pane: PaneId } | null {
   return dragging;
 }
 

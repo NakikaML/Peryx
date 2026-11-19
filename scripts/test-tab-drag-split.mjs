@@ -104,6 +104,8 @@ async function main() {
         paneKids: pane ? Array.from(pane.children).map(k => String(k.className || '').split(' ')[0]) : [],
         wsKids: ws ? Array.from(ws.children).map(k => String(k.className || '').split(' ')[0]) : [],
         splitTitle: document.querySelector('.split-title')?.textContent ?? null,
+        sideTabs: Array.from(document.querySelectorAll('.tabbar-side .tab-title')).map(e => e.textContent),
+        mainTabs: Array.from(document.querySelectorAll('.tabbar-main .tab-title')).map(e => e.textContent),
         zoneCount: document.querySelectorAll('.drop-zone').length,
       };
     })()`);
@@ -133,7 +135,7 @@ async function main() {
   });
 
   // C. 关掉再丢左侧
-  await js(`(() => { const b = Array.from(document.querySelectorAll('.split-pane .icon-btn')).find(x => (x.title||'')==='关闭分屏'); if (b) b.click(); return true; })()`);
+  await js(`(() => { const b = document.querySelector('.tabbar-pane-close'); if (b) b.click(); return true; })()`);
   await sleep(800);
   await startDrag("笔记A");
   await sleep(400);
@@ -147,7 +149,7 @@ async function main() {
   });
 
   // D. 丢到下方
-  await js(`(() => { const b = Array.from(document.querySelectorAll('.split-pane .icon-btn')).find(x => (x.title||'')==='关闭分屏'); if (b) b.click(); return true; })()`);
+  await js(`(() => { const b = document.querySelector('.tabbar-pane-close'); if (b) b.click(); return true; })()`);
   await sleep(800);
   await startDrag("笔记A");
   await sleep(400);
@@ -170,7 +172,7 @@ async function main() {
   });
 
   // E. 丢到上方
-  await js(`(() => { const b = Array.from(document.querySelectorAll('.split-pane .icon-btn')).find(x => (x.title||'')==='关闭分屏'); if (b) b.click(); return true; })()`);
+  await js(`(() => { const b = document.querySelector('.tabbar-pane-close'); if (b) b.click(); return true; })()`);
   await sleep(800);
   await startDrag("笔记A");
   await sleep(400);
@@ -192,6 +194,17 @@ async function main() {
     pass: top.wsKids.includes("right-sidebar") && !top.paneKids.includes("right-sidebar"),
   });
 
+  // G. 拖动是「移动」：主面板不再保留该标签
+  results.push({
+    label: "G. 拖到分屏后，主面板不再保留该标签（移动而非复制）",
+    mainTabs: top.mainTabs,
+    sideTabs: top.sideTabs,
+    pass:
+      Array.isArray(top.mainTabs) &&
+      Array.isArray(top.sideTabs) &&
+      top.sideTabs.includes("笔记A") &&
+      !top.mainTabs.includes("笔记A"),
+  });
   console.log(JSON.stringify(results, null, 2));
   const passed = results.filter((r) => r.pass).length;
   console.log(`\n=== 汇总：${passed}/${results.length} 通过 ===`);

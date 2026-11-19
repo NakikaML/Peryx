@@ -326,7 +326,7 @@ export default function App() {
             )}
 
             {/* 热区只在编辑区内，不压住右侧边栏 */}
-            {tabDragging && <SplitDropZones />}
+            {tabDragging && <SplitDropZones onDropped={() => setTabDragging(false)} />}
           </div>
 
           {note && rightOpen && (
