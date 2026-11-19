@@ -18,6 +18,8 @@ interface Props {
   /** 跳转到别的笔记的某一行（链接面板用，行号从 1 开始） */
   onJumpNote: (path: string, line: number) => void;
   onClose: () => void;
+  /** 视口顶部所在行（0 基），大纲跟随高亮用 */
+  activeLine?: number;
 }
 
 type Tab = "outline" | "back" | "out";
@@ -37,7 +39,7 @@ function Snippet({ hit }: { hit: ContextHit }) {
   );
 }
 
-export function RightSidebar({ source, onJumpLine, onJumpNote, onClose }: Props) {
+export function RightSidebar({ source, onJumpLine, onJumpNote, onClose, activeLine }: Props) {
   const [tab, setTab] = useState<Tab>("outline");
   const note = useStore((s) => s.note);
   const backlinks = useStore((s) => s.backlinks);
@@ -77,7 +79,7 @@ export function RightSidebar({ source, onJumpLine, onJumpNote, onClose }: Props)
       <div className="right-body">
         {tab === "outline" && (
           <div className="right-outline">
-            <Outline source={source} onJump={onJumpLine} />
+            <Outline source={source} activeLine={activeLine} onJump={onJumpLine} />
           </div>
         )}
 

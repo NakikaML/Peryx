@@ -52,6 +52,8 @@ export default function App() {
   /** 覆盖层：命令面板 / 全局搜索 / 设置 */
   const [overlay, setOverlay] = useState<"palette" | "search" | "settings" | null>(null);
   const [showLineNumbers, setShowLineNumbers] = useState(false);
+  /** 视口顶部所在行（0 基），供大纲跟随高亮 */
+  const [scrollLine, setScrollLine] = useState(0);
   /** 用户设置（字号 / 样式 / 快捷键） */
   const [settings, setSettings] = useState<Settings>(defaultSettings);
 
@@ -274,6 +276,7 @@ export default function App() {
                     onChange={setContent}
                     onSave={() => void save()}
                     onCursor={(line, col) => setCursor({ line, col })}
+                    onScrollLine={setScrollLine}
                   />
                 )}
               </>
@@ -314,6 +317,7 @@ export default function App() {
                 })();
               }}
               onClose={() => setRightOpen(false)}
+            activeLine={scrollLine}
             />
           )}
         </div>

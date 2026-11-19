@@ -1084,6 +1084,30 @@ function MermaidLivePreview() {
   return <App />;
 }
 
+/** 大纲滚动跟随测试：多章节 + 足够长的内容 */
+const OUTLINE_SAMPLE = (() => {
+  const parts = ["# 总标题", ""];
+  for (let i = 1; i <= 6; i++) {
+    parts.push(`## 第 ${i} 章`, "");
+    for (let k = 0; k < 6; k++) {
+      parts.push(`第 ${i} 章的第 ${k + 1} 段内容，用来撑开高度。`, "");
+    }
+  }
+  return parts.join("\n");
+})();
+
+/** 大纲跟随测试页 */
+function OutlinePreview() {
+  seedCalloutStore("live", "__OUTLINE_MOCK__");
+  if (!(window as unknown as Record<string, unknown>).__OUTLINE_SEEDED__) {
+    useStore.setState({
+      note: { path: "大纲测试.md", title: "大纲测试", content: OUTLINE_SAMPLE, dirty: false },
+    });
+    (window as unknown as Record<string, unknown>).__OUTLINE_SEEDED__ = true;
+  }
+  return <App />;
+}
+
 function Preview() {
   const query = new URLSearchParams(location.search);
   const page = query.get("page");
@@ -1114,6 +1138,7 @@ function Preview() {
   if (page === "footnote") return <FootnotePreview />;
   if (page === "mermaid") return <MermaidPreview />;
   if (page === "mermaid-live") return <MermaidLivePreview />;
+  if (page === "outline") return <OutlinePreview />;
 
   React.useEffect(() => {
     let cancelled = false;

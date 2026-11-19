@@ -56,6 +56,8 @@ interface Props {
   onChange: (value: string) => void;
   onSave: () => void;
   onCursor?: (line: number, col: number) => void;
+  /** 滚动时报告视口顶部所在行（0 基），供大纲跟随高亮 */
+  onScrollLine?: (line: number) => void;
 }
 
 /** 源码模式语法高亮 */
@@ -84,7 +86,7 @@ const sourceHighlight = syntaxHighlighting(
 );
 
 export const MarkdownEditor = forwardRef<EditorHandle, Props>(function MarkdownEditor(
-  { docPath, value, mode, showLineNumbers, onChange, onSave, onCursor },
+  { docPath, value, mode, showLineNumbers, onChange, onSave, onCursor, onScrollLine },
   ref,
 ) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -95,9 +97,11 @@ export const MarkdownEditor = forwardRef<EditorHandle, Props>(function MarkdownE
   const onChangeRef = useRef(onChange);
   const onSaveRef = useRef(onSave);
   const onCursorRef = useRef(onCursor);
+  const onScrollLineRef = useRef(onScrollLine);
   onChangeRef.current = onChange;
   onSaveRef.current = onSave;
   onCursorRef.current = onCursor;
+  onScrollLineRef.current = onScrollLine;
 
   useImperativeHandle(ref, () => ({
     get view() {
@@ -105,6 +109,51 @@ export const MarkdownEditor = forwardRef<EditorHandle, Props>(function MarkdownE
     },
     focus: () => viewRef.current?.focus(),
   }));
+
+  /**
+   * 滚动时报告视口顶部所在行（0 基）。
+   *
+   * 不依赖 effect 声明顺序：编辑器可能在后面的 effect 里才创建，
+   * 所以这里等 view 就绪后再挂监听（用 rAF 轮询几次即可）。
+   */
+  useEffect(() => {
+    let disposed = false;
+    let scroller: HTMLElement | null = null;
+    let raf = 0;
+
+    const report = () => {
+      raf = 0;
+      const v = viewRef.current;
+      if (!v) return;
+      const top = v.scrollDOM.scrollTop;
+      const block = v.lineBlockAtHeight(Math.max(top, 0));
+      const line = v.state.doc.lineAt(block.from).number - 1;
+      onScrollLineRef.current?.(line);
+    };
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(report);
+    };
+
+    const attach = () => {
+      if (disposed) return;
+      const view = viewRef.current;
+      if (!view) {
+        requestAnimationFrame(attach);
+        return;
+      }
+      scroller = view.scrollDOM;
+      scroller.addEventListener("scroll", onScroll, { passive: true });
+      report();
+    };
+    attach();
+
+    return () => {
+      disposed = true;
+      if (raf) cancelAnimationFrame(raf);
+      scroller?.removeEventListener("scroll", onScroll);
+    };
+  }, []);
 
   // 初始化编辑器（仅在挂载时创建一次）
   useEffect(() => {

@@ -2074,6 +2074,14 @@ button.link-item:hover {
   color: var(--fg-muted);
 }
 
+/* 大纲：滚动跟随高亮 */
+.outline-item.active {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
 /* ---- 拖拽排序 ---- */
 
 .tree-item.dragging {
