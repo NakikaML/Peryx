@@ -122,6 +122,10 @@ export const api = {
   /** 列出资料库目录（非 Markdown 资料；md 留给笔记树，两边隔离） */
   listResources: (relPath: string) => invoke<FileNode[]>("list_resources", { relPath }),
 
+  /** 把外部文件复制进资料库，返回导入后的相对路径 */
+  importResources: (sources: string[]) =>
+    invoke<string[]>("import_resources", { sources }),
+
   /** 读取资料文件，返回 data: URL（PDF 交给前端 pdf.js 解析） */
   readResourceDataUrl: (relPath: string) =>
     invoke<string>("read_resource_data_url", { relPath }),

@@ -10,7 +10,9 @@
  */
 
 import { useEffect, useState } from "react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useStore } from "@/stores/app";
+import { api } from "@/lib/api";
 import type { FileNode } from "@/lib/types";
 
 /** 能直接阅读的格式 */
@@ -42,6 +44,48 @@ export function ResourcePane() {
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
+
+  /** 选文件 → 复制进资料库 → 刷新列表 */
+  const importFiles = async () => {
+    try {
+      const picked = await openDialog({
+        multiple: true,
+        title: "导入资料到资料库",
+        filters: [
+          {
+            name: "资料文件",
+            extensions: ["pdf", "docx", "doc", "pptx", "ppt", "xlsx", "xls", "epub", "mobi", "txt", "zip", "rar", "7z"],
+          },
+        ],
+      });
+      if (!picked) return;
+      const sources = Array.isArray(picked) ? picked : [picked];
+      if (sources.length === 0) return;
+
+      setImporting(true);
+      const imported = await api.importResources(sources);
+      await loadResources("");
+      // 顺手刷新已经展开的子目录
+      for (const [p, open] of Object.entries(expanded)) {
+        if (open) await loadResources(p);
+      }
+      if (imported.length === 0) {
+        toast("没有可导入的文件", "error");
+      } else {
+        toast(
+          imported.length === 1
+            ? `已导入「${imported[0].split("/").pop()}」`
+            : `已导入 ${imported.length} 个文件`,
+          "success",
+        );
+      }
+    } catch (e) {
+      toast(`导入失败：${e instanceof Error ? e.message : String(e)}`, "error");
+    } finally {
+      setImporting(false);
+    }
+  };
 
   // 首次挂载时加载根目录
   useEffect(() => {
@@ -103,6 +147,15 @@ export function ResourcePane() {
     <div className="resource-pane">
       <div className="resource-head">
         <span className="resource-title">📚 资料库</span>
+        <button
+          className="resource-import"
+          title="导入资料（PDF / Word / PPT / Excel / EPUB…）"
+          data-action="import-resource"
+          disabled={importing}
+          onClick={() => void importFiles()}
+        >
+          {importing ? "…" : "+"}
+        </button>
         <button
           className="resource-refresh"
           title="刷新资料库"

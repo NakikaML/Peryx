@@ -84,6 +84,7 @@ pub fn run() {
             // ---- v0.3 资料库 ----
             commands::list_resources,
             commands::read_resource_data_url,
+            commands::import_resources,
             commands::load_settings,
             commands::save_settings,
             // ---- v0.2 索引 / 搜索 / 双链 / 标签 ----

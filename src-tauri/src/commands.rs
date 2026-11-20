@@ -972,6 +972,79 @@ pub fn read_resource_data_url(
     read_resource_in(&root, &rel_path)
 }
 
+/// 把外部文件导入资料库（复制一份进来，不改动原文件）。
+///
+/// 只接受资料类扩展名；同名时自动改名（`论文.pdf` → `论文 (2).pdf`），
+/// 不覆盖已有文件——资料是用户的原始材料，静默覆盖风险太大。
+///
+/// @returns 实际导入后的相对路径（前端据此刷新列表）
+#[tauri::command]
+pub fn import_resources(
+    sources: Vec<String>,
+    state: State<'_, AppState>,
+) -> CmdResult<Vec<String>> {
+    let root = get_root(&state)?;
+    import_resources_in(&root, &sources)
+}
+
+pub fn import_resources_in(root: &Path, sources: &[String]) -> CmdResult<Vec<String>> {
+    if sources.is_empty() {
+        return Ok(Vec::new());
+    }
+    // 资料库目录不存在就建一个
+    let dir = root.join(RESOURCE_DIR_NAME);
+    fs::create_dir_all(&dir).map_err(|e| format!("创建资料库目录失败：{e}"))?;
+
+    let mut imported: Vec<String> = Vec::new();
+    for src in sources {
+        let from = PathBuf::from(src);
+        if !from.is_file() {
+            continue; // 目录或已删除的路径直接跳过
+        }
+        let ext = from
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        if !RESOURCE_EXTS.contains(&ext.as_str()) {
+            return Err(format!("「{ext}」不是支持的资料格式"));
+        }
+        let name = from
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "未命名".to_string());
+        let target_name = unique_name(&dir, &name);
+        let target = dir.join(&target_name);
+        fs::copy(&from, &target).map_err(|e| format!("复制「{name}」失败：{e}"))?;
+        imported.push(rel_to_string(
+            target.strip_prefix(root).unwrap_or(&target),
+        ));
+    }
+    Ok(imported)
+}
+
+/// 在目录里找一个不冲突的文件名：`a.pdf` → `a (2).pdf` → `a (3).pdf` …
+fn unique_name(dir: &Path, name: &str) -> String {
+    if !dir.join(name).exists() {
+        return name.to_string();
+    }
+    let p = Path::new(name);
+    let stem = p
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| name.to_string());
+    let ext = p
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_default();
+    for n in 2..10_000 {
+        let candidate = format!("{stem} ({n}){ext}");
+        if !dir.join(&candidate).exists() {
+            return candidate;
+        }
+    }
+    name.to_string()
+}
+
 pub fn read_resource_in(root: &Path, rel_path: &str) -> CmdResult<String> {
     let p = resolve_in_vault(root, rel_path)?;
     if !p.is_file() {
@@ -1034,6 +1107,56 @@ fn base64_encode(input: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn import_resources_copies_and_dedupes() {
+        let dir = std::env::temp_dir().join("peryx_import_test_1");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("论文.pdf");
+        fs::write(&src, b"%PDF-1.4 test").unwrap();
+
+        let paths = vec![src.to_string_lossy().to_string()];
+        let out = import_resources_in(&dir, &paths).unwrap();
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].replace('\\', "/"), "资料库/论文.pdf");
+        assert!(dir.join("资料库").join("论文.pdf").is_file());
+
+        // 再导一次：不覆盖，改名成「论文 (2).pdf」
+        let out2 = import_resources_in(&dir, &paths).unwrap();
+        assert_eq!(out2[0].replace('\\', "/"), "资料库/论文 (2).pdf");
+        assert_eq!(
+            fs::read(dir.join("资料库").join("论文.pdf")).unwrap(),
+            b"%PDF-1.4 test"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn import_resources_rejects_unknown_ext() {
+        let dir = std::env::temp_dir().join("peryx_import_test_2");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("脚本.exe");
+        fs::write(&src, b"MZ").unwrap();
+        let err = import_resources_in(&dir, &[src.to_string_lossy().to_string()]).unwrap_err();
+        assert!(err.contains("不是支持的资料格式"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unique_name_appends_counter() {
+        let dir = std::env::temp_dir().join("peryx_import_test_3");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        assert_eq!(unique_name(&dir, "a.pdf"), "a.pdf");
+        fs::write(dir.join("a.pdf"), b"x").unwrap();
+        assert_eq!(unique_name(&dir, "a.pdf"), "a (2).pdf");
+        fs::write(dir.join("a (2).pdf"), b"x").unwrap();
+        assert_eq!(unique_name(&dir, "a.pdf"), "a (3).pdf");
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn list_resources_only_non_markdown() {
