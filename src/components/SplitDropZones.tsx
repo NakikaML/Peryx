@@ -2,9 +2,10 @@
  * Tab 拖拽分屏的投放热区（纯展示）。
  *
  * 落点判定在 App 里按指针坐标算（见 lib/tabDrag.ts 的 zoneAt），
- * 这里只负责画左右两个投放区，并把当前命中的那个高亮。
+ * 这里负责画四个方向的提示区，并把当前命中的那个高亮。
  *
- * 上下分屏暂时不做（v0.3），所以只有左右两块。
+ * 上下分屏在 v0.3 恢复：竖排的布局问题（.editor-wrap 缺 min-height: 0）
+ * 已经修好。
  */
 
 import type { SplitSide } from "@/lib/tabDrag";
@@ -12,6 +13,8 @@ import type { SplitSide } from "@/lib/tabDrag";
 const SIDES: { side: SplitSide; label: string; hint: string }[] = [
   { side: "left", label: "⬒", hint: "在左侧分屏" },
   { side: "right", label: "⬓", hint: "在右侧分屏" },
+  { side: "top", label: "⬒", hint: "在上方分屏" },
+  { side: "bottom", label: "⬓", hint: "在下方分屏" },
 ];
 
 export function SplitDropZones({ hover }: { hover: SplitSide | null }) {

@@ -54,16 +54,31 @@ export function endTabDrag() {
  *
  * 把编辑区按比例切成四块边缘区域，取「离哪条边最近」；
  * 落在中间（离四边都超过 25%）视为不投放。
+ *
+ * 竖排（上下）也支持了：上一次因为 .editor-wrap 缺 min-height
+ * 导致竖排被挤出去，这次布局修好了。
  */
 export function zoneAt(rect: DOMRect, x: number, y: number): SplitSide | null {
   if (rect.width === 0 || rect.height === 0) return null;
   if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return null;
 
   const relX = (x - rect.left) / rect.width;
-  // 左侧 30% → 左边分屏；右侧 30% → 右边分屏；中间不投放
-  if (relX < 0.3) return "left";
-  if (relX > 0.7) return "right";
-  return null;
+  const relY = (y - rect.top) / rect.height;
+  const dist = {
+    left: relX,
+    right: 1 - relX,
+    top: relY,
+    bottom: 1 - relY,
+  } as const;
+
+  const min = Math.min(dist.left, dist.right, dist.top, dist.bottom);
+  // 中间区域不投放
+  if (min > 0.25) return null;
+
+  if (min === dist.left) return "left";
+  if (min === dist.right) return "right";
+  if (min === dist.top) return "top";
+  return "bottom";
 }
 
-export const SPLIT_SIDES: SplitSide[] = ["left", "right"];
+export const SPLIT_SIDES: SplitSide[] = ["left", "right", "top", "bottom"];
