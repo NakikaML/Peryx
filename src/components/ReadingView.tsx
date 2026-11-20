@@ -11,6 +11,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { renderMarkdown } from "@/lib/markdown";
+import { normalizeOwnSyntax } from "@/lib/ownSyntax";
 import { api } from "@/lib/api";
 import { getCachedImage, onImageLoaded, resolveImagePath } from "@/lib/imageCache";
 import { linkTargetExists, resolveLinkTarget } from "@/lib/linkCache";
@@ -31,43 +32,10 @@ interface Props {
   onRequestEdit?: () => void;
 }
 
-const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|svg|avif|ico)$/i;
-
 /**
- * 把本项目自有语法预处理成标准 Markdown，
- * 这样可以直接交给 markdown-it 渲染。
- *
- * 注意：必须在 HTML 转义之前处理，否则 `[[x]]` 里的字符会被破坏。
+ * 自有语法（`![[图片]]` / `[[双链]]`）的预处理已抽到 lib/ownSyntax.ts，
+ * 阅读模式与 PDF 导出共用同一份实现。
  */
-function normalizeOwnSyntax(source: string) {
-  const images: string[] = [];
-  const links: { target: string; alias: string | null }[] = [];
-
-  let text = source;
-
-  // 1) ![[图片]] → 占位符，稍后替换成 <img>
-  text = text.replace(/!\[\[([^\]]+)\]\]/g, (_m, raw: string) => {
-    const target = String(raw).split("|")[0].trim();
-    if (!IMAGE_EXT.test(target)) {
-      // 不是图片 → 当作笔记嵌入，这里先降级成普通链接
-      links.push({ target, alias: null });
-      return `[[${target}]]`;
-    }
-    images.push(target);
-    return `\uE000IMG${images.length - 1}\uE001`;
-  });
-
-  // 2) [[目标|别名]] → 占位符
-  text = text.replace(/\[\[([^\]]+)\]\]/g, (_m, raw: string) => {
-    const parts = String(raw).split("|");
-    const target = parts[0].trim();
-    const alias = parts.length > 1 ? parts[1].trim() : null;
-    links.push({ target, alias });
-    return `\uE000LINK${links.length - 1}\uE001`;
-  });
-
-  return { text, images, links };
-}
 
 export function ReadingView({
   source,

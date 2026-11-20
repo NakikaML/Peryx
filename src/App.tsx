@@ -21,6 +21,7 @@ import { SplitPane } from "@/components/SplitPane";
 import { SplitDropZones } from "@/components/SplitDropZones";
 import { PaneModeSwitch } from "@/components/PaneModeSwitch";
 import { PropertiesPanel } from "@/components/PropertiesPanel";
+import { exportNoteAsPdf } from "@/lib/exportPdf";
 import { endTabDrag, subscribeTabDrag, zoneAt } from "@/lib/tabDrag";
 import type { SplitSide, TabDragState } from "@/lib/tabDrag";
 import { applySettings, defaultSettings, loadSettings, matchShortcut } from "@/lib/settings";
@@ -249,6 +250,24 @@ export default function App() {
     );
   }
 
+  /** 导出当前笔记为 PDF */
+  const handleExportPdf = async () => {
+    const st = useStore.getState();
+    const cur = st.note;
+    if (!cur) return;
+    try {
+      // 先落盘，保证导出的是最新内容
+      await st.save();
+      await exportNoteAsPdf({
+        title: cur.title,
+        docPath: cur.path,
+        markdown: cur.content,
+      });
+      st.toast("已在打印对话框中生成，选择「另存为 PDF」即可", "success");
+    } catch (e) {
+      st.toast(`导出失败：${e instanceof Error ? e.message : String(e)}`, "error");
+    }
+  };
   // 正文第一行已是同名 H1 时，不再重复显示标题栏
   const firstLine = note?.content.split("\n").find((l) => l.trim()) ?? "";
   const hasOwnH1 = /^#\s+/.test(firstLine.trim());
@@ -287,6 +306,14 @@ export default function App() {
                   {hasOwnH1 && <span />}
                   <div className="note-head-actions">
                     <PaneModeSwitch mode={mode} onChange={setMode} />
+                    <button
+                      className="icon-btn"
+                      title="导出为 PDF（系统打印里选「另存为 PDF」）"
+                      data-action="export-pdf"
+                      onClick={() => void handleExportPdf()}
+                    >
+                      ⤓
+                    </button>
                     <button
                       className={`icon-btn ${showLineNumbers ? "on" : ""}`}
                       title="显示行号"
