@@ -2310,6 +2310,236 @@ button.link-item:hover {
   color: var(--accent-ink);
 }
 
+/* ===== 属性面板（YAML frontmatter） ===== */
+
+.props {
+  flex-shrink: 0;
+  margin: 4px 24px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-panel);
+}
+
+.props-empty {
+  border-style: dashed;
+  background: none;
+  padding: 6px 10px;
+  opacity: 0.65;
+  transition: opacity 0.15s;
+}
+
+.props-empty:hover {
+  opacity: 1;
+}
+
+.props-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.props-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: none;
+  padding: 2px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.props-toggle:hover {
+  color: var(--accent-ink);
+}
+
+.props-count {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--fg-faint);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 6px;
+}
+
+.props-add-trigger {
+  margin-left: auto;
+  border: none;
+  background: none;
+  font-size: 11.5px;
+  color: var(--fg-faint);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 5px;
+}
+
+.props-add-trigger:hover {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.props-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 6px;
+}
+
+.prop-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+
+.prop-row:hover {
+  background: var(--bg-elevated);
+}
+
+.prop-key {
+  width: 120px;
+  flex-shrink: 0;
+  font-size: 11.5px;
+  color: var(--fg-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prop-values {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.prop-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: 11.5px;
+}
+
+.prop-chip-x {
+  border: none;
+  background: none;
+  color: inherit;
+  opacity: 0.5;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 1px;
+}
+
+.prop-chip-x:hover {
+  opacity: 1;
+  color: var(--danger);
+}
+
+.prop-chip-add {
+  border: 1px dashed var(--border-strong);
+  background: none;
+  color: var(--fg-faint);
+  border-radius: 10px;
+  width: 20px;
+  height: 18px;
+  font-size: 11px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.prop-chip-add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.prop-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid transparent;
+  background: none;
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  color: var(--fg);
+  font-family: inherit;
+}
+
+.prop-input:hover {
+  border-color: var(--border);
+}
+
+.prop-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg-elevated);
+}
+
+.prop-input-inline {
+  width: 110px;
+  flex: none;
+  border-color: var(--border);
+}
+
+.prop-remove {
+  border: none;
+  background: none;
+  color: var(--fg-faint);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 4px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.prop-row:hover .prop-remove {
+  opacity: 0.7;
+}
+
+.prop-remove:hover {
+  opacity: 1;
+  color: var(--danger);
+}
+
+.prop-row-new {
+  gap: 6px;
+}
+
+.prop-key-input {
+  max-width: 150px;
+  border-color: var(--border);
+}
+
+.btn-mini {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--fg-muted);
+  font-size: 11.5px;
+  padding: 2px 9px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.btn-mini:hover {
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.btn-mini-ghost {
+  background: none;
+  border-color: transparent;
+}
+
 /* ===== 分屏 ===== */
 
 .split-pane {

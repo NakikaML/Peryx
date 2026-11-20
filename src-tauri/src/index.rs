@@ -45,6 +45,9 @@ pub struct NoteMeta {
     pub title: String,
     pub tags: Vec<String>,
     pub links: Vec<LinkRef>,
+    /// YAML 里的别名（aliases / alias），`[[别名]]` 也能定位到这篇笔记
+    #[serde(default)]
+    pub aliases: Vec<String>,
     pub mtime_ms: u64,
     pub size: u64,
 }
@@ -184,8 +187,104 @@ pub fn parse_title(text: &str, fallback: &str) -> String {
     fallback.to_string()
 }
 
-/// 判断字符是否可作为标签的一部分。
+/// 从 YAML frontmatter 里取别名。
 ///
+/// 支持三种写法（Obsidian 常见写法都能认）：
+/// ```text
+/// aliases:
+///   - 甲
+///   - 乙
+/// ```
+/// ```text
+/// aliases: [甲, 乙]
+/// ```
+/// ```text
+/// alias: 甲
+/// ```
+///
+/// 只扫文档开头 `---` 到 `---` 之间的内容，正文里出现的同名列不算。
+pub fn parse_aliases(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let lines: Vec<&str> = text.lines().collect();
+
+    // 必须以 --- 开头才算 frontmatter
+    if lines.first().map(|l| l.trim()) != Some("---") {
+        return out;
+    }
+
+    // 找结束的 ---
+    let end = lines
+        .iter()
+        .enumerate()
+        .skip(1)
+        .find(|(_, l)| matches!(l.trim(), "---" | "..."))
+        .map(|(i, _)| i);
+    let Some(end) = end else { return out };
+
+    let mut in_alias_block = false;
+
+    for line in &lines[1..end] {
+        let trimmed = line.trim_end();
+        if trimmed.trim().is_empty() {
+            continue;
+        }
+        // 缩进的 `- 值`：属于上面的键
+        let is_item = trimmed.starts_with('-') || trimmed.starts_with("  -");
+        if is_item && in_alias_block {
+            let v = trimmed.trim_start().trim_start_matches('-').trim();
+            push_alias(&mut out, &mut seen, v);
+            continue;
+        }
+
+        // 形如 `key: value`
+        let Some((key, value)) = trimmed.split_once(':') else {
+            in_alias_block = false;
+            continue;
+        };
+        // 只认顶层键（不能有前导缩进）
+        if line.starts_with(' ') || line.starts_with('\t') {
+            continue;
+        }
+        let key = key.trim().to_lowercase();
+        if key != "aliases" && key != "alias" {
+            in_alias_block = false;
+            continue;
+        }
+
+        let value = value.trim();
+        if value.is_empty() {
+            // 值在下面的 `- 项` 列表里
+            in_alias_block = true;
+        } else {
+            in_alias_block = false;
+            // 内联数组：[甲, 乙] / ["甲", "乙"]
+            let inner = value.trim_start_matches('[').trim_end_matches(']');
+            for part in inner.split(',') {
+                push_alias(&mut out, &mut seen, part);
+            }
+        }
+    }
+
+    out
+}
+
+/// 去掉引号与空白后加入结果（去重，保持顺序）
+fn push_alias(out: &mut Vec<String>, seen: &mut std::collections::HashSet<String>, raw: &str) {
+    let v = raw
+        .trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .trim();
+    if v.is_empty() {
+        return;
+    }
+    if seen.insert(v.to_lowercase()) {
+        out.push(v.to_string());
+    }
+}
+
+/// 判断字符是否可作为标签的一部分。
 /// 允许：字母、数字、`_`、`-`、`/`（支持 `#项目/子项` 这种层级标签）。
 /// 中文等非 ASCII 字母也算（`is_alphanumeric` 覆盖）。
 fn is_tag_char(c: char) -> bool {
@@ -456,6 +555,10 @@ impl NoteIndex {
             put(stem_of(path).to_string(), path);
             // 标题
             put(entry.meta.title.clone(), path);
+            // YAML 别名：`[[别名]]` 也能定位过来
+            for alias in &entry.meta.aliases {
+                put(alias.clone(), path);
+            }
         }
         map
     }
@@ -528,6 +631,7 @@ fn read_entry(full: &Path, rel: &str, meta: &fs::Metadata) -> Option<NoteEntry> 
         title: parse_title(&content, &fallback),
         tags: parse_tags(&masked),
         links: parse_links(&masked),
+        aliases: parse_aliases(&content),
         mtime_ms: mtime_ms(meta),
         size: meta.len(),
     };
@@ -852,6 +956,43 @@ pub fn replace_tag(text: &str, old: &str, new: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_aliases_block_list() {
+        let text = "---\ntitle: 甲\naliases:\n  - 别名一\n  - 别名二\n---\n\n# 甲\n";
+        assert_eq!(parse_aliases(text), vec!["别名一", "别名二"]);
+    }
+
+    #[test]
+    fn parse_aliases_inline_array() {
+        let text = "---\naliases: [甲, \"乙\", '丙']\n---\n正文";
+        assert_eq!(parse_aliases(text), vec!["甲", "乙", "丙"]);
+    }
+
+    #[test]
+    fn parse_aliases_singular_alias() {
+        let text = "---\nalias: 单个别名\n---\n正文";
+        assert_eq!(parse_aliases(text), vec!["单个别名"]);
+    }
+
+    #[test]
+    fn parse_aliases_ignores_body() {
+        // 没有 frontmatter 时，正文里的 aliases: 不算
+        let text = "# 笔记\n\naliases:\n  - 假别名\n";
+        assert!(parse_aliases(text).is_empty());
+    }
+
+    #[test]
+    fn parse_aliases_dedupes_case_insensitively() {
+        let text = "---\naliases:\n  - Foo\n  - foo\n---\n";
+        assert_eq!(parse_aliases(text), vec!["Foo"]);
+    }
+
+    #[test]
+    fn parse_aliases_skips_other_keys() {
+        let text = "---\ntags:\n  - a\naliases:\n  - 乙\n---\n";
+        assert_eq!(parse_aliases(text), vec!["乙"]);
+    }
 
     #[test]
     fn parse_title_prefers_first_h1() {
@@ -1211,6 +1352,7 @@ mod tests {
             title: "甲".into(),
             tags: vec![],
             links: vec![],
+            aliases: vec![],
             mtime_ms: 1,
             size: 2,
         };

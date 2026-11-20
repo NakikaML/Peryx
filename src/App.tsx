@@ -20,6 +20,7 @@ import { TabBar } from "@/components/TabBar";
 import { SplitPane } from "@/components/SplitPane";
 import { SplitDropZones } from "@/components/SplitDropZones";
 import { PaneModeSwitch } from "@/components/PaneModeSwitch";
+import { PropertiesPanel } from "@/components/PropertiesPanel";
 import { endTabDrag, subscribeTabDrag, zoneAt } from "@/lib/tabDrag";
 import type { SplitSide, TabDragState } from "@/lib/tabDrag";
 import { applySettings, defaultSettings, loadSettings, matchShortcut } from "@/lib/settings";
@@ -302,6 +303,16 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+                {/* YAML 属性面板：阅读态不显示（阅读模式只看正文） */}
+                {!loadingNote && mode !== "read" && (
+                  <PropertiesPanel
+                    source={note.content}
+                    onChange={(next) => {
+                      const st = useStore.getState();
+                      st.setContent(next);
+                    }}
+                  />
+                )}
                 {loadingNote ? (
                   <div className="editor-loading">正在加载…</div>
                 ) : mode === "read" ? (

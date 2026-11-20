@@ -1162,6 +1162,33 @@ function SplitPreview() {
     const store: Record<string, string> = {
       "笔记A.md": "# 笔记A\n\n这是 A 的内容。\n",
       "笔记B.md": "# 笔记B\n\n这是 B 的内容。\n",
+      "属性笔记.md": [
+        "---",
+        "title: 属性笔记",
+        "aliases:",
+        "  - 属性别名一",
+        "  - 属性别名二",
+        "tags:",
+        "  - 数学",
+        "difficulty: 中等",
+        "---",
+        "",
+        "# 属性笔记",
+        "",
+        "正文里链接到 [[别名目标]]。",
+        "",
+      ].join("\n"),
+      "别名目标.md": [
+        "---",
+        "aliases:",
+        "  - 目标别名",
+        "---",
+        "",
+        "# 别名目标",
+        "",
+        "这篇笔记的别名是「目标别名」。",
+        "",
+      ].join("\n"),
     };
     g.__TAURI_INTERNALS__ = {
       invoke: async (cmd: string, args: Record<string, unknown>) => {
@@ -1197,12 +1224,25 @@ function SplitPreview() {
       note: null,
       tabs: [],
       splitPath: null,
-      children: { "": [node("笔记A"), node("笔记B")] },
+      children: {
+        "": [node("笔记A"), node("笔记B"), node("属性笔记"), node("别名目标")],
+      },
       backlinks: [],
       outlinks: [],
       tags: [],
     });
-    setLinkIndex([]);
+    // 链接缓存要带别名，`[[别名]]` 才能解析
+    setLinkIndex(
+      ["笔记A", "笔记B", "属性笔记", "别名目标"].map((t) => ({
+        path: `${t}.md`,
+        title: t,
+        tags: [],
+        links: [],
+        aliases: t === "别名目标" ? ["目标别名"] : [],
+        mtimeMs: 0,
+        size: 10,
+      })),
+    );
     g.__SPLIT_SEEDED__ = true;
   }
   return <App />;
