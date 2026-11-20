@@ -73,7 +73,7 @@ async function main() {
 
   // A. 页签与预设
   const tabs = await js(`(() => ({
-    tabs: Array.from(document.querySelectorAll('.settings-tab')).map(e => e.textContent.trim()),
+    tabs: Array.from(document.querySelectorAll('.settings-nav-item')).map(e => e.textContent.trim()),
     cards: Array.from(document.querySelectorAll('.theme-card')).map(e => ({
       id: e.dataset.themeId,
       name: e.querySelector('.theme-name')?.textContent?.trim(),
@@ -82,10 +82,10 @@ async function main() {
   }))()`);
 
   results.push({
-    label: "A. 设置里有「主题」页签且列出多个预设",
+    label: "A. 设置左栏有「外观」项且列出多个预设",
     tabs: tabs.tabs,
     cardCount: tabs.cards.length,
-    pass: tabs.tabs.includes("主题") && tabs.cards.length >= 4,
+    pass: tabs.tabs.some((x) => x.includes("外观")) && tabs.cards.length >= 4,
   });
 
   // B. 默认是 Obsidian
@@ -131,7 +131,7 @@ async function main() {
 
   // F. 自定义样式覆盖主题
   await js(`(() => {
-    const t = Array.from(document.querySelectorAll('.settings-tab')).find(e => e.textContent.trim() === '样式');
+    const t = document.querySelector('[data-settings-tab="theme"]');
     if (t) t.click();
     return true;
   })()`);

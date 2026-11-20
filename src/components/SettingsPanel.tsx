@@ -26,7 +26,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Tab = "theme" | "font" | "style" | "keys";
+type Tab = "theme" | "keys";
 
 /** 字体候选（中西文各给几个稳妥的） */
 const FONT_OPTIONS = [
@@ -57,12 +57,72 @@ function comboFromEvent(e: KeyboardEvent): string | null {
   return [...mods, main].join("+");
 }
 
+/** 设置窗口的尺寸范围 */
+const MIN_W = 560;
+const MIN_H = 380;
+const DEFAULT_SIZE = { w: 860, h: 620 };
+const SIZE_KEY = "peryx.settings.size";
+
+/** 记住上次调整过的窗口大小 */
+function loadSize(): { w: number; h: number } {
+  try {
+    const raw = localStorage.getItem(SIZE_KEY);
+    if (!raw) return DEFAULT_SIZE;
+    const s = JSON.parse(raw) as { w?: number; h?: number };
+    return {
+      w: Math.max(MIN_W, Math.min(Math.round(s.w ?? DEFAULT_SIZE.w), 2000)),
+      h: Math.max(MIN_H, Math.min(Math.round(s.h ?? DEFAULT_SIZE.h), 1600)),
+    };
+  } catch {
+    return DEFAULT_SIZE;
+  }
+}
+
+const TABS: { id: Tab; label: string; icon: string }[] = [
+  { id: "theme", label: "外观", icon: "🎨" },
+  { id: "keys", label: "快捷键", icon: "⌨" },
+];
+
 export function SettingsPanel({ settings, onChange, onClose }: Props) {
   const [tab, setTab] = useState<Tab>("theme");
   const [draft, setDraft] = useState<Settings>(settings);
   /** 正在录制快捷键的动作 */
   const [recording, setRecording] = useState<ShortcutAction | null>(null);
+  /** 窗口尺寸（右下角可拖动调整） */
+  const [size, setSize] = useState(loadSize);
   const toast = useStore((s) => s.toast);
+
+  /** 右下角拖动调整窗口大小 */
+  const beginResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startW = size.w;
+    const startH = size.h;
+
+    const onMove = (ev: MouseEvent) => {
+      setSize({
+        w: Math.max(MIN_W, Math.min(startW + (ev.clientX - startX), window.innerWidth - 40)),
+        h: Math.max(MIN_H, Math.min(startH + (ev.clientY - startY), window.innerHeight - 40)),
+      });
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      // 记住尺寸
+      setSize((cur) => {
+        try {
+          localStorage.setItem(SIZE_KEY, JSON.stringify(cur));
+        } catch {
+          /* 无痕模式等写不进去就算了 */
+        }
+        return cur;
+      });
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
 
   // 打开时把当前设置复制成草稿；实时预览样式
   useEffect(() => {
@@ -103,21 +163,22 @@ export function SettingsPanel({ settings, onChange, onClose }: Props) {
 
   const resetCurrentTab = () => {
     if (tab === "theme") {
-      update({ theme: DEFAULT_THEME_ID });
-      toast("已恢复默认主题", "success");
-    } else if (tab === "keys") {
-      update({ shortcuts: { ...DEFAULT_SHORTCUTS } });
-      toast("快捷键已恢复默认", "success");
-    } else if (tab === "style") {
-      const styles = { ...draft.styles };
+      // 主题页包含字号、行高、元素样式，一并恢复
+      const styles = {} as typeof draft.styles;
       for (const { key } of STYLE_LABELS) {
         styles[key] = { color: "", fontFamily: "", scale: 1, bold: false, italic: false };
       }
-      update({ styles });
-      toast("样式已恢复默认", "success");
+      const preset = getPreset(DEFAULT_THEME_ID);
+      update({
+        theme: DEFAULT_THEME_ID,
+        fontSize: preset.fontSize ?? 18,
+        lineHeight: preset.lineHeight ?? 1.75,
+        styles,
+      });
+      toast("已恢复默认主题与样式", "success");
     } else {
-      update({ fontSize: 16, lineHeight: 1.75 });
-      toast("字号已恢复默认", "success");
+      update({ shortcuts: { ...DEFAULT_SHORTCUTS } });
+      toast("快捷键已恢复默认", "success");
     }
   };
 
@@ -149,33 +210,44 @@ export function SettingsPanel({ settings, onChange, onClose }: Props) {
 
   return (
     <div className="cmdk-mask" onMouseDown={onClose}>
-      <div className="settings" onMouseDown={(e) => e.stopPropagation()}>
+      <div
+        className="settings"
+        style={{ width: size.w, height: size.h }}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <div className="settings-head">
           <span className="settings-title">设置</span>
-          <div className="settings-tabs">
-            <button className={`settings-tab ${tab === "theme" ? "active" : ""}`} onClick={() => setTab("theme")}>
-              主题
-            </button>
-            <button className={`settings-tab ${tab === "font" ? "active" : ""}`} onClick={() => setTab("font")}>
-              字号
-            </button>
-            <button className={`settings-tab ${tab === "style" ? "active" : ""}`} onClick={() => setTab("style")}>
-              样式
-            </button>
-            <button className={`settings-tab ${tab === "keys" ? "active" : ""}`} onClick={() => setTab("keys")}>
-              快捷键
-            </button>
-          </div>
+          <span className="settings-spacer" />
           <button className="settings-close" onClick={onClose} title="关闭（Esc）">
             ✕
           </button>
         </div>
 
-        <div className="settings-body">
-          {tab === "theme" && (
+        <div className="settings-main">
+          {/* 左侧导航（Obsidian 式） */}
+          <nav className="settings-nav">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                data-settings-tab={t.id}
+                className={`settings-nav-item ${tab === t.id ? "active" : ""}`}
+                onClick={() => setTab(t.id)}
+              >
+                <span className="settings-nav-icon">{t.icon}</span>
+                {t.label}
+              </button>
+            ))}
+          </nav>
+
+          {/* 右侧内容 */}
+          <div className="settings-content">
+            <div className="settings-pane-title">{TABS.find((t) => t.id === tab)?.label}</div>
+            <div className="settings-body">
+              {tab === "theme" && (
             <div className="settings-section">
               <div className="settings-note" style={{ marginTop: 0 }}>
-                选一个预设作为整体配色；「样式」页可以在此基础上再改单个元素的颜色与字体。
+                选一个预设作为整体配色；下面可以再微调字号、行高和单个元素的颜色与字体。
+                切换主题时，没手动改过的元素会跟着换色。
               </div>
 
               <div className="theme-grid">
@@ -186,14 +258,23 @@ export function SettingsPanel({ settings, onChange, onClose }: Props) {
                       key={p.id}
                       data-theme-id={p.id}
                       className={`theme-card ${selected ? "selected" : ""}`}
-                      onClick={() =>
+                      onClick={() => {
+                        /*
+                         * 切换主题 = 换一套基础样式。
+                         * 把元素上手动改过的颜色清掉，才会跟着新主题走
+                         * （字体、缩放、粗细这些不属于配色的保留）。
+                         */
+                        const styles = {} as typeof draft.styles;
+                        for (const { key } of STYLE_LABELS) {
+                          styles[key] = { ...draft.styles[key], color: "" };
+                        }
                         update({
                           theme: p.id,
-                          // 预设顺带给出建议字号，方便一键接近 Obsidian 观感
                           ...(p.fontSize ? { fontSize: p.fontSize } : {}),
                           ...(p.lineHeight ? { lineHeight: p.lineHeight } : {}),
-                        })
-                      }
+                          styles,
+                        });
+                      }}
                     >
                       <span className="theme-preview" aria-hidden="true">
                         <span
@@ -270,11 +351,10 @@ export function SettingsPanel({ settings, onChange, onClose }: Props) {
                   </span>
                 </div>
               </div>
-            </div>
-          )}
 
-          {tab === "font" && (
-            <div className="settings-section">
+              {/* ---- 基础样式：字号与行高 ---- */}
+              <div className="settings-subtitle">基础样式</div>
+
               <label className="settings-row">
                 <span className="settings-label">正文字号</span>
                 <input
@@ -301,28 +381,20 @@ export function SettingsPanel({ settings, onChange, onClose }: Props) {
                 <span className="settings-value">{draft.lineHeight.toFixed(2)}</span>
               </label>
 
-              <div className="settings-preview">
-                <div className="settings-preview-title">预览</div>
-                <div style={{ fontSize: draft.fontSize, lineHeight: draft.lineHeight }}>
-                  <p style={{ margin: "0 0 6px" }}>这是一段正文，用来感受字号与行高。</p>
-                  <p style={{ margin: 0, fontWeight: 700 }}>加粗的文字</p>
-                  <p style={{ margin: 0, fontStyle: "italic" }}>斜体的文字</p>
-                </div>
-              </div>
-
               <div className="settings-note">
                 数学公式、代码块、表格的字号不在此调整范围内。
               </div>
-            </div>
-          )}
 
-          {tab === "style" && (
-            <div className="settings-section">
+              {/* ---- 元素样式 ---- */}
+              <div className="settings-subtitle">元素样式</div>
               <div className="settings-note" style={{ marginTop: 0 }}>
                 颜色留空表示沿用主题；缩放 1 表示不缩放。
               </div>
               {STYLE_LABELS.map(({ key, label }) => {
                 const rule = draft.styles[key];
+                // 没自定义颜色时，色块显示当前主题给该元素的颜色
+                const themeColor = getPreset(draft.theme).elementColors?.[key];
+                const shownColor = rule.color || themeColor || "#2f6f6b";
                 return (
                   <div className="style-card" key={key}>
                     <div className="style-card-head">{label}</div>
@@ -331,12 +403,13 @@ export function SettingsPanel({ settings, onChange, onClose }: Props) {
                       <input
                         type="color"
                         className="style-color"
-                        value={rule.color || "#2f6f6b"}
+                        data-style-key={key}
+                        value={shownColor}
                         onChange={(e) => updateStyle(key, { color: e.target.value })}
                       />
                       <button
                         className="style-clear"
-                        title="恢复默认颜色"
+                        title="恢复该主题的默认颜色"
                         onClick={() => updateStyle(key, { color: "" })}
                       >
                         默认
@@ -427,7 +500,16 @@ export function SettingsPanel({ settings, onChange, onClose }: Props) {
               })}
             </div>
           )}
+            </div>
+          </div>
         </div>
+
+        {/* 右下角拖拽调整窗口大小 */}
+        <div
+          className="settings-resize"
+          title="拖动调整大小"
+          onMouseDown={beginResize}
+        />
 
         <div className="settings-foot">
           <button className="btn-ghost" onClick={resetCurrentTab}>

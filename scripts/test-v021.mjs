@@ -195,21 +195,23 @@ async function main() {
 
     const opened = await js(`(() => {
       const panel = document.querySelector('.settings');
-      const tabs = Array.from(document.querySelectorAll('.settings-tab')).map(e => e.textContent.trim());
+      const tabs = Array.from(document.querySelectorAll('.settings-nav-item')).map(e => e.textContent.trim());
       return { exists: !!panel, tabs };
     })()`);
 
     results.push({
-      label: "E. 设置面板打开且有四个页签",
+      label: "E. 设置面板打开，左栏含外观 / 快捷键两项",
       ...opened,
-      pass: opened.exists === true && opened.tabs.length === 4,
+      pass:
+        opened.exists === true &&
+        opened.tabs.length === 2 &&
+        opened.tabs.some((x) => x.includes("外观")) &&
+        opened.tabs.some((x) => x.includes("快捷键")),
     });
 
     // 改字号 → CSS 变量即时更新
-    // 先切到「字号」页签并等 React 渲染完（默认页签是「主题」）
+    // 字号现在在「主题」页的「基础样式」里，直接取第一个滑杆
     await js(`(() => {
-      const tabBtn = Array.from(document.querySelectorAll('.settings-tab')).find(e => e.textContent.trim() === '字号');
-      if (tabBtn) tabBtn.click();
       return true;
     })()`);
     await new Promise((r) => setTimeout(r, 500));
@@ -241,7 +243,7 @@ async function main() {
 
     // 切到快捷键页
     await js(`(() => {
-      const t = Array.from(document.querySelectorAll('.settings-tab')).find(e => e.textContent.indexOf('快捷键') >= 0);
+      const t = document.querySelector('[data-settings-tab="keys"]');
       if (t) t.click();
       return true;
     })()`);

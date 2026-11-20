@@ -21,6 +21,16 @@ export const peryxTheme = EditorView.theme({
     margin: "0 auto",
     width: "100%",
     caretColor: "var(--accent)",
+    /*
+     * 正文（「样式 → 正文」）的落地位置。
+     * 这些变量以前只写不读，所以改正文的颜色/字体/缩放毫无反应。
+     * 标题、加粗等元素在自己的规则里显式覆盖，不受这里影响。
+     */
+    color: "var(--md-p-color, inherit)",
+    fontFamily: "var(--md-p-font, inherit)",
+    fontWeight: "var(--md-p-weight, inherit)",
+    fontStyle: "var(--md-p-style, inherit)",
+    fontSize: "calc(var(--editor-font-size, 16px) * var(--md-p-scale, 1))",
   },
   ".cm-line": {
     padding: "0 24px",
@@ -107,14 +117,28 @@ export const peryxTheme = EditorView.theme({
     fontStyle: "var(--md-i-style, italic)",
     color: "var(--md-i-color, inherit)",
     fontFamily: "var(--md-i-font, inherit)",
+    fontSize: "calc(1em * var(--md-i-scale, 1))",
+    fontWeight: "var(--md-i-weight, inherit)",
   },
-  ".cm-strike": { textDecoration: "line-through", opacity: "0.55" },
+  ".cm-strike": {
+    textDecoration: "line-through",
+    opacity: "0.55",
+    color: "var(--md-s-color, inherit)",
+    fontFamily: "var(--md-s-font, inherit)",
+    fontSize: "calc(1em * var(--md-s-scale, 1))",
+    fontWeight: "var(--md-s-weight, inherit)",
+    fontStyle: "var(--md-s-style, inherit)",
+  },
   ".cm-highlight": {
     color: "var(--md-mark-color, inherit)",
     backgroundColor: "rgba(255, 213, 79, 0.45)",
     borderRadius: "3px",
     padding: "0.05em 0.1em",
     margin: "0 -0.1em",
+    fontFamily: "var(--md-mark-font, inherit)",
+    fontSize: "calc(1em * var(--md-mark-scale, 1))",
+    fontWeight: "var(--md-mark-weight, inherit)",
+    fontStyle: "var(--md-mark-style, inherit)",
   },
   ".cm-inline-code": {
     fontFamily: "var(--font-mono)",
@@ -321,6 +345,11 @@ export const peryxTheme = EditorView.theme({
   // 任务列表：整行加复选框
   ".cm-task-line": {
     listStyle: "none",
+    color: "var(--md-list-color, inherit)",
+    fontFamily: "var(--md-list-font, inherit)",
+    fontSize: "calc(1em * var(--md-list-scale, 1))",
+    fontWeight: "var(--md-list-weight, inherit)",
+    fontStyle: "var(--md-list-style, inherit)",
   },
   // 任务复选框（由 widget 插入，可点击切换）
   ".cm-task-checkbox": {
@@ -333,13 +362,43 @@ export const peryxTheme = EditorView.theme({
     accentColor: "var(--accent)",
   },
   // 普通无序列表：圆点
+  ".cm-list-line": {
+    color: "var(--md-list-color, inherit)",
+    fontFamily: "var(--md-list-font, inherit)",
+    fontSize: "calc(1em * var(--md-list-scale, 1))",
+    fontWeight: "var(--md-list-weight, inherit)",
+    fontStyle: "var(--md-list-style, inherit)",
+  },
   ".cm-list-line::before": {
     content: "'•'",
     display: "inline-block",
     width: "14px",
     marginRight: "6px",
-    color: "var(--accent)",
+    // 未自定义列表颜色时，圆点仍用强调色
+    color: "var(--md-list-color, var(--accent))",
     fontWeight: "700",
+  },
+  /*
+   * 光标所在行：隐藏生成的圆点，改由源码里的 `-` 充当项目符号。
+   * 否则会同时出现「• -」（Obsidian 的列表也是这个行为）。
+   */
+  ".cm-list-line.cm-list-line-active::before": {
+    content: "none",
+    width: "0",
+    marginRight: "0",
+  },
+  /*
+   * 有序列表：数字是正文的一部分，不能再画圆点，否则变成「• 1. 内容」。
+   * 左侧留出与无序列表相同的缩进，两种列表才对得齐。
+   */
+  ".cm-ol-line": {
+    paddingLeft: "20px",
+    textIndent: "-20px",
+    color: "var(--md-list-color, inherit)",
+    fontFamily: "var(--md-list-font, inherit)",
+    fontSize: "calc(1em * var(--md-list-scale, 1))",
+    fontWeight: "var(--md-list-weight, inherit)",
+    fontStyle: "var(--md-list-style, inherit)",
   },
   // 已完成任务项的内容
   ".cm-task-done-content": {

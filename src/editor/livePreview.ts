@@ -646,6 +646,18 @@ const fenceLineDeco = Decoration.line({ class: "cm-code-fence" });
 const taskLineDeco = Decoration.line({ class: "cm-task-line" });
 const taskDoneDeco = Decoration.line({ class: "cm-task-line cm-task-done" });
 const listLineDeco = Decoration.line({ class: "cm-list-line" });
+/**
+ * 光标所在的无序列表行。
+ *
+ * 这类行要把源码里的 `-` 显示出来，而圆点是 CSS 的 `::before` 画的，
+ * 两者同时出现就变成「• -」。所以加一个类把生成的圆点关掉，
+ * 由真实的 `-` 顶替它——与 Obsidian 一致。
+ */
+const listLineActiveDeco = Decoration.line({
+  class: "cm-list-line cm-list-line-active",
+});
+/** 有序列表行：数字直接在正文里，不画圆点 */
+const olLineDeco = Decoration.line({ class: "cm-ol-line" });
 const mathSourceDeco = Decoration.line({ class: "cm-math-source-line" });
 
 /** 标记隐藏（0 宽透明，字符仍在 DOM 中） */
@@ -912,15 +924,18 @@ function buildDecorations(state: EditorState): DecorationSet {
     // 无序列表
     const list = /^(\s*)([-*+])\s+/.exec(text);
     if (list) {
-      pushLine(line.from, listLineDeco);
+      // 光标行：不画圆点，让源码里的 `-` 自己充当项目符号
+      pushLine(line.from, active ? listLineActiveDeco : listLineDeco);
       mark(line.from, line.from + list[0].length, markDeco(active));
       continue;
     }
 
     // 有序列表：标记直接显示（数字本身有意义），只淡化
+    // 注意用独立的行装饰：`.cm-list-line` 会画圆点，有序列表再画一个
+    // 就变成「• 1. 内容」了
     const ol = /^(\s*)(\d+\.)\s+/.exec(text);
     if (ol) {
-      pushLine(line.from, listLineDeco);
+      pushLine(line.from, olLineDeco);
       mark(line.from, line.from + ol[0].length, decorativeTextDeco);
       continue;
     }

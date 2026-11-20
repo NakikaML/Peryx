@@ -8,6 +8,8 @@
  * AnuPpuccin 主题 + Catppuccin Latte 配色 + 18px 正文。
  */
 
+import type { StyleKey } from "@/lib/settings";
+
 export interface ThemeVars {
   bg: string;
   bgPanel: string;
@@ -46,6 +48,13 @@ export interface ThemePreset {
   fontSize?: number;
   lineHeight?: number;
   vars: ThemeVars;
+  /**
+   * 该主题下各元素的默认颜色。
+   *
+   * 「样式」页把用户改过的颜色存成独立设置；这里给出主题自带的值，
+   * 用于在没改过时显示「主题默认」，也让切换主题时基础样式跟着变。
+   */
+  elementColors?: Partial<Record<StyleKey, string>>;
 }
 
 /**
@@ -189,21 +198,45 @@ const MOSS: ThemeVars = {
 export const THEME_PRESETS: ThemePreset[] = [
   {
     id: "obsidian",
-    name: "Obsidian",
-    hint: "AnuPpuccin · Catppuccin Latte（与你 Obsidian 一致）",
+    name: "默认",
+    hint: "Catppuccin Latte 浅色，与你 Obsidian 的观感一致",
     dark: false,
     fontSize: 18,
     lineHeight: 1.75,
     vars: LATTE,
+    elementColors: {
+      h1: "#179299",
+      h2: "#7287fd",
+      h3: "#df8e1d",
+      bold: "#d20f39",
+      italic: "#8839ef",
+      strike: "#9ca0b0",
+      highlight: "#4c4f69",
+      quote: "#6c6f85",
+      list: "#4c4f69",
+      link: "#1e66f5",
+    },
   },
   {
     id: "obsidian-dark",
-    name: "Obsidian 深色",
-    hint: "AnuPpuccin · Catppuccin Mocha",
+    name: "默认深色",
+    hint: "Catppuccin Mocha，夜间写作",
     dark: true,
     fontSize: 18,
     lineHeight: 1.75,
     vars: MOCHA,
+    elementColors: {
+      h1: "#94e2d5",
+      h2: "#b4befe",
+      h3: "#f9e2af",
+      bold: "#f38ba8",
+      italic: "#cba6f7",
+      strike: "#6c7086",
+      highlight: "#cdd6f4",
+      quote: "#a6adc8",
+      list: "#cdd6f4",
+      link: "#89b4fa",
+    },
   },
   {
     id: "moss",
@@ -213,6 +246,18 @@ export const THEME_PRESETS: ThemePreset[] = [
     fontSize: 16,
     lineHeight: 1.75,
     vars: MOSS,
+    elementColors: {
+      h1: "#2f6f6b",
+      h2: "#2f6f6b",
+      h3: "#2f6f6b",
+      bold: "#b8493c",
+      italic: "#6a5acd",
+      strike: "#a5a29a",
+      highlight: "#2b2b2b",
+      quote: "#6b6b66",
+      list: "#2b2b2b",
+      link: "#2f6f6b",
+    },
   },
   {
     id: "solarized",
@@ -222,6 +267,18 @@ export const THEME_PRESETS: ThemePreset[] = [
     fontSize: 17,
     lineHeight: 1.8,
     vars: SOLARIZED,
+    elementColors: {
+      h1: "#268bd2",
+      h2: "#6c71c4",
+      h3: "#b58900",
+      bold: "#dc322f",
+      italic: "#6c71c4",
+      strike: "#93a1a1",
+      highlight: "#586e75",
+      quote: "#657b83",
+      list: "#586e75",
+      link: "#268bd2",
+    },
   },
   {
     id: "paper",
@@ -231,6 +288,18 @@ export const THEME_PRESETS: ThemePreset[] = [
     fontSize: 16,
     lineHeight: 1.7,
     vars: PAPER,
+    elementColors: {
+      h1: "#0969da",
+      h2: "#0550ae",
+      h3: "#1f2328",
+      bold: "#1f2328",
+      italic: "#59636e",
+      strike: "#8c959f",
+      highlight: "#1f2328",
+      quote: "#59636e",
+      list: "#1f2328",
+      link: "#0969da",
+    },
   },
 ];
 

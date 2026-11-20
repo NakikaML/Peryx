@@ -1269,9 +1269,11 @@ button.link-item:hover {
 /* ===== 设置面板 ===== */
 
 .settings {
-  width: 660px;
+  /* 尺寸由 JS 控制（右下角可拖动调整），这里只兜底 */
+  width: 860px;
+  height: 620px;
   max-width: calc(100vw - 48px);
-  max-height: 78vh;
+  max-height: calc(100vh - 48px);
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-radius: 12px;
@@ -1279,6 +1281,115 @@ button.link-item:hover {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+}
+
+/* 左上角那条细细的「可以拖大」的提示，纯装饰 */
+.settings::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+/* ---- 左右两栏：左导航 + 右内容（Obsidian 式） ---- */
+
+.settings-main {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.settings-nav {
+  width: 172px;
+  flex-shrink: 0;
+  padding: 10px 8px;
+  border-right: 1px solid var(--border);
+  background: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--fg-muted);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.settings-nav-item:hover {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.settings-nav-item.active {
+  background: var(--bg-elevated);
+  color: var(--accent-ink);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+
+.settings-nav-icon {
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.85;
+}
+
+.settings-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.settings-pane-title {
+  padding: 14px 20px 0;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--fg);
+  flex-shrink: 0;
+}
+
+.settings-content .settings-body {
+  padding: 12px 20px 18px;
+}
+
+/* ---- 右下角拖拽手柄 ---- */
+
+.settings-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  z-index: 3;
+  /* 用两条斜线画出抓握纹理 */
+  background:
+    linear-gradient(135deg, transparent 0 46%, var(--border-strong) 46% 54%, transparent 54%),
+    linear-gradient(135deg, transparent 0 70%, var(--border-strong) 70% 78%, transparent 78%);
+  border-bottom-right-radius: 12px;
+}
+
+.settings-resize:hover {
+  background:
+    linear-gradient(135deg, transparent 0 46%, var(--accent) 46% 54%, transparent 54%),
+    linear-gradient(135deg, transparent 0 70%, var(--accent) 70% 78%, transparent 78%);
 }
 
 .settings-head {
@@ -2456,6 +2567,16 @@ button.link-item:hover {
 }
 
 /* ===== 主题预设 ===== */
+
+.settings-subtitle {
+  margin: 20px 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
 
 .theme-grid {
   display: grid;
