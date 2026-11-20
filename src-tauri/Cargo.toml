@@ -1,6 +1,6 @@
 [package]
 name = "peryx"
-version = "0.2.1"
+version = "0.3.0"
 description = "Peryx 栖知 - 个性化 Markdown 学习笔记软件"
 authors = ["Peryx"]
 edition = "2021"
