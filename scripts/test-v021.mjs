@@ -62,7 +62,19 @@ async function key(cdp, key, code, vk, modifiers = 0) {
   await cdp("Input.dispatchKeyEvent", { type: "keyUp", key, code, windowsVirtualKeyCode: vk, modifiers });
 }
 
+/** 先杀掉可能残留的 peryx 进程：否则新实例会因单实例锁退出，
+ *  测试会连到旧进程上（用的是旧配置），表现为莫名其妙的失败。 */
+const __KILLED_PERYX__ = true;
+function killStaleApp() {
+  return new Promise((resolve) => {
+    const p = spawn("taskkill", ["/F", "/IM", "peryx.exe"], { stdio: "ignore" });
+    p.on("exit", () => setTimeout(resolve, 600));
+    p.on("error", () => resolve());
+  });
+}
+
 async function main() {
+  await killStaleApp();
   const results = [];
 
   // ---- 工具栏 + 右侧边栏 + 快捷键（用 shell 预览页，它有完整 App）----

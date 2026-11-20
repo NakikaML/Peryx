@@ -21,7 +21,19 @@ const get = (port, p) =>
   });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** 先杀掉可能残留的 peryx 进程：否则新实例会因单实例锁退出，
+ *  测试会连到旧进程上（用的是旧配置），表现为莫名其妙的失败。 */
+const __KILLED_PERYX__ = true;
+function killStaleApp() {
+  return new Promise((resolve) => {
+    const p = spawn("taskkill", ["/F", "/IM", "peryx.exe"], { stdio: "ignore" });
+    p.on("exit", () => setTimeout(resolve, 600));
+    p.on("error", () => resolve());
+  });
+}
+
 async function main() {
+  await killStaleApp();
   fs.rmSync(VAULT, { recursive: true, force: true });
   fs.mkdirSync(VAULT, { recursive: true });
   fs.writeFileSync(path.join(VAULT, "甲.md"), "# 甲笔记\n\n甲的内容。\n", "utf8");
@@ -125,9 +137,9 @@ async function main() {
     }))()`);
 
     results.push({
-      label: "1. 拖动时出现左右两个热区",
+      label: "1. 拖动时出现四个热区（左/右/上/下）",
       zones,
-      pass: zones === 2,
+      pass: zones === 4,
     });
     results.push({
       label: "2. 松手后右侧出现分屏，标签移动过去",
