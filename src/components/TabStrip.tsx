@@ -9,8 +9,30 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import type { NoteTab } from "@/lib/types";
+import type { NoteTab, TabKind } from "@/lib/types";
 import { startTabDrag, type PaneId } from "@/lib/tabDrag";
+
+/** 标签类型：旧数据没有 kind，按扩展名兜底判断 */
+function kindOf(t: NoteTab): TabKind {
+  if (t.kind) return t.kind;
+  if (/\.pdf$/i.test(t.path)) return "pdf";
+  if (/\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i.test(t.path)) return "image";
+  return "note";
+}
+
+function kindBadge(t: NoteTab): string {
+  const k = kindOf(t);
+  if (k === "pdf") return "PDF";
+  if (k === "image") return "IMG";
+  return "MD";
+}
+
+function kindLabel(t: NoteTab): string {
+  const k = kindOf(t);
+  if (k === "pdf") return "PDF 资料（只读）";
+  if (k === "image") return "图片";
+  return "Markdown 笔记";
+}
 
 interface Props {
   /** 哪个面板（决定拖拽来源） */
@@ -21,6 +43,8 @@ interface Props {
   onClose: (path: string) => void;
   /** 右键菜单里的额外动作（主面板才有） */
   onCloseOthers?: (path: string) => void;
+  /** 是否显示格式徽标（.md / .pdf …） */
+  showKind?: boolean;
   /** 分屏面板用：显示关闭分屏按钮 */
   onClosePane?: () => void;
 }
@@ -36,6 +60,7 @@ export function TabStrip({
   onClose,
   onCloseOthers,
   onClosePane,
+  showKind,
 }: Props) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const [menu, setMenu] = useState<{ path: string; x: number; y: number } | null>(null);
@@ -114,6 +139,11 @@ export function TabStrip({
                 setMenu({ path: t.path, x: e.clientX, y: e.clientY });
               }}
             >
+              {showKind && (
+                <span className={`tab-kind tab-kind-${kindOf(t)}`} title={kindLabel(t)}>
+                  {kindBadge(t)}
+                </span>
+              )}
               <span className="tab-title">{t.title}</span>
               <button
                 className="tab-close"

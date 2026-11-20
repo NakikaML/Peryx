@@ -525,7 +525,19 @@ export const useStore = create<AppStore>((set, get) => ({
     // 切换笔记前先保存未落盘内容
     const cur = get().note;
     if (cur?.dirty) void get().save();
-    set({ imagePreview: path, selectedPath: path, selectedIsDir: false, note: null });
+    const title = path.split("/").pop() ?? path;
+    const tabs = get().tabs;
+    const nextTabs = tabs.some((t) => t.path === path)
+      ? tabs
+      : [...tabs, { path, title, kind: "image" as const }];
+    set({
+      imagePreview: path,
+      selectedPath: path,
+      selectedIsDir: false,
+      note: null,
+      resource: null,
+      tabs: nextTabs,
+    });
   },
 
   // ---- v0.3 资料库 ----
@@ -533,11 +545,17 @@ export const useStore = create<AppStore>((set, get) => ({
     const cur = get().note;
     if (cur?.dirty) void get().save();
     const title = path.split("/").pop() ?? path;
-    // 资料与笔记互斥：打开资料要把笔记区让出来
+    // 资源也进标签栏，和笔记平级
+    const tabs = get().tabs;
+    const nextTabs = tabs.some((t) => t.path === path)
+      ? tabs
+      : [...tabs, { path, title, kind: "pdf" as const }];
     set({
       resource: { path, title },
+      // 资料与笔记互斥：打开资料要把笔记区让出来
       note: null,
       imagePreview: null,
+      tabs: nextTabs,
       selectedPath: path,
       selectedIsDir: false,
     });
@@ -575,13 +593,16 @@ export const useStore = create<AppStore>((set, get) => ({
       const tabs = get().tabs;
       const nextTabs = tabs.some((t) => t.path === path)
         ? tabs
-        : [...tabs, { path, title }];
+        : [...tabs, { path, title, kind: "note" as const }];
       set({
         note: { path, title, content, dirty: false },
         tabs: nextTabs,
         selectedPath: path,
         selectedIsDir: false,
         imagePreview: null,
+        // 关键：从 PDF 切回笔记时必须把 resource 清掉，
+        // 否则 App 会一直渲染 PDF（「卡在 PDF 里」就是这里）
+        resource: null,
         loadingNote: false,
       });
       void get().loadLinks(path);
@@ -608,27 +629,48 @@ export const useStore = create<AppStore>((set, get) => ({
     const idx = tabs.findIndex((t) => t.path === path);
     if (idx < 0) return;
     const rest = tabs.filter((t) => t.path !== path);
+    const closing = tabs[idx];
+    const isActive =
+      get().note?.path === path ||
+      get().resource?.path === path ||
+      get().imagePreview === path;
 
-    if (get().note?.path !== path) {
+    // 关的不是当前标签：只从标签栏移除
+    if (!isActive) {
       set({ tabs: rest });
       return;
     }
+
     // 关的是当前笔记：先保存，再切到右边（没有就切左边）
     if (get().note?.dirty) await get().save();
     const next = rest[idx] ?? rest[idx - 1] ?? null;
-    set({ tabs: rest, note: null, imagePreview: null });
-    if (next) {
-      await get().openNote(next.path);
-    } else {
+    set({ tabs: rest, note: null, imagePreview: null, resource: null });
+
+    if (!next) {
       set({ selectedPath: null, selectedIsDir: false });
+      return;
     }
+    // 按类型恢复下一个标签的内容
+    if (next.kind === "pdf") {
+      get().openResource(next.path);
+    } else if (next.kind === "image") {
+      get().showImage(next.path);
+    } else {
+      await get().openNote(next.path);
+    }
+    void closing;
   },
 
   /** 只留下指定标签页 */
   async closeOtherTabs(path) {
     const keep = get().tabs.filter((t) => t.path === path);
+    const target = keep[0];
     set({ tabs: keep });
-    if (get().note?.path !== path) await get().openNote(path);
+    if (!target) return;
+    if (get().note?.path === path || get().resource?.path === path) return;
+    if (target.kind === "pdf") get().openResource(target.path);
+    else if (target.kind === "image") get().showImage(target.path);
+    else await get().openNote(target.path);
   },
 
   /** 在目录树中选中一个文件夹（只选中，不读取内容） */

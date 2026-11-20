@@ -31,10 +31,20 @@ export interface OpenNote {
   dirty: boolean;
 }
 
+/**
+ * 标签页内容的类型。
+ * - `note`：Markdown 笔记（可编辑、可进分屏）
+ * - `pdf`：资料库里的 PDF（只读阅读器）
+ * - `image`：图片预览
+ */
+export type TabKind = "note" | "pdf" | "image";
+
 /** 标签页 */
 export interface NoteTab {
   path: string;
   title: string;
+  /** 缺省视为 note（向后兼容旧数据） */
+  kind?: TabKind;
 }
 
 /** 目录树展开状态：key 为目录相对路径 */export type ExpandedMap = Record<string, true>;

@@ -2540,6 +2540,43 @@ button.link-item:hover {
   border-color: transparent;
 }
 
+/* ===== 标签页的格式徽标（MD / PDF / IMG） ===== */
+
+.tab-kind {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1.5;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--bg-panel);
+  color: var(--fg-faint);
+  border: 1px solid var(--border);
+}
+
+.tab-kind-pdf {
+  background: rgba(210, 15, 57, 0.1);
+  color: #c02a4a;
+  border-color: rgba(210, 15, 57, 0.25);
+}
+
+.tab-kind-img {
+  background: rgba(64, 160, 43, 0.12);
+  color: #2f7a25;
+  border-color: rgba(64, 160, 43, 0.25);
+}
+
+.tab.active .tab-kind {
+  background: var(--bg-elevated);
+  color: var(--fg-muted);
+  border-color: var(--border-strong);
+}
+
+.tab.active .tab-kind-pdf {
+  color: #c02a4a;
+}
+
 /* ===== 资料库（侧边栏下半部分） ===== */
 
 .resource-pane {
