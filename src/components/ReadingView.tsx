@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { renderMarkdown } from "@/lib/markdown";
 import { normalizeOwnSyntax } from "@/lib/ownSyntax";
+import { stripFrontmatter } from "@/lib/frontmatter";
 import { api } from "@/lib/api";
 import { getCachedImage, onImageLoaded, resolveImagePath } from "@/lib/imageCache";
 import { linkTargetExists, resolveLinkTarget } from "@/lib/linkCache";
@@ -48,7 +49,11 @@ export function ReadingView({
   const [imgUrls, setImgUrls] = useState<Record<string, string | null>>({});
   const rootRef = useRef<HTMLDivElement | null>(null);
 
-  const { text, images, links } = useMemo(() => normalizeOwnSyntax(source), [source]);
+  const { text, images, links } = useMemo(
+    // 阅读模式只看正文：frontmatter 属于属性面板，不在正文里重复一遍
+    () => normalizeOwnSyntax(stripFrontmatter(source)),
+    [source],
+  );
 
   // 图片：先取缓存，未命中就异步加载
   useEffect(() => {

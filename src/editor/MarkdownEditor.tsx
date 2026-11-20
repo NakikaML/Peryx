@@ -85,6 +85,35 @@ const sourceHighlight = syntaxHighlighting(
   ]),
 );
 
+/** 从纯文本算正文起点（跳过顶部 frontmatter） */
+function firstBodyPosFromText(text: string): number {
+  const lines = text.split("\n");
+  if (lines.length < 2 || lines[0].trim() !== "---") return 0;
+  let pos = 0;
+  for (let i = 1; i < lines.length; i++) {
+    pos += lines[i - 1].length + 1;
+    const t = lines[i].trim();
+    if (t === "---" || t === "...") {
+      return i + 1 < lines.length ? pos + lines[i].length + 1 : pos + lines[i].length;
+    }
+  }
+  return 0;
+}
+/**
+ * 找正文起点：如果文档以 `---` 开头且有配对的结束 `---`，
+ * 返回结束行之后的位置；否则返回 0。
+ */
+function firstBodyPos(doc: { lines: number; line: (n: number) => { text: string; to: number } }): number {
+  if (doc.lines < 2) return 0;
+  if (doc.line(1).text.trim() !== "---") return 0;
+  for (let n = 2; n <= doc.lines; n++) {
+    const t = doc.line(n).text.trim();
+    if (t === "---" || t === "...") {
+      return n < doc.lines ? doc.line(n).to + 1 : doc.line(n).to;
+    }
+  }
+  return 0;
+}
 export const MarkdownEditor = forwardRef<EditorHandle, Props>(function MarkdownEditor(
   { docPath, value, mode, showLineNumbers, onChange, onSave, onCursor, onScrollLine },
   ref,
@@ -170,6 +199,10 @@ export const MarkdownEditor = forwardRef<EditorHandle, Props>(function MarkdownE
 
     const state = EditorState.create({
       doc: value,
+      // 打开笔记时把光标放到正文开头（跳过 frontmatter）：
+      // 否则光标停在文首会让折叠逻辑判定「光标在内」而不折叠，
+      // 用户一不小心也会往 YAML 里打字。
+      selection: { anchor: firstBodyPosFromText(value) },
       extensions: [
         gutterCompartment.current.of(showLineNumbers ? [lineNumbers(), foldGutter()] : []),
         highlightActiveLineGutter(),
@@ -238,7 +271,10 @@ export const MarkdownEditor = forwardRef<EditorHandle, Props>(function MarkdownE
     if (current !== value) {
       view.dispatch({
         changes: { from: 0, to: current.length, insert: value },
-        selection: { anchor: 0 },
+        // 有 frontmatter 时把光标放到正文开头：
+        // 否则光标停在文首会让「折叠 frontmatter」的逻辑判定为「光标在内」
+        // 而展开，同时用户在文首一打字就往 YAML 里插内容。
+        selection: { anchor: firstBodyPos(view.state.doc) },
         scrollIntoView: true,
       });
     }

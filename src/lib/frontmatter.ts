@@ -280,3 +280,11 @@ export function setProperty(
 export function hasFrontmatter(text: string): boolean {
   return parseFrontmatter(text).exists;
 }
+
+/** 去掉 frontmatter，只留正文（阅读模式 / PDF 导出用） */
+export function stripFrontmatter(text: string): string {
+  const fm = parseFrontmatter(text);
+  if (!fm.exists) return text;
+  const lines = text.split("\n");
+  return lines.slice(fm.bodyStartLine).join("\n").replace(/^\n+/, "");
+}

@@ -689,11 +689,73 @@ interface Pending {
 // 构建装饰
 // ---------------------------------------------------------------------------
 
+/**
+ * 折叠后的 frontmatter：占 0 高度，什么都不画。
+ *
+ * 属性已经在笔记上方的面板里看得到了，正文里不需要再占一块。
+ * 这里用 `display: none` 而不是留白，避免正文开始处多出一条空行。
+ */
+class FrontmatterHidden extends WidgetType {
+  eq(other: FrontmatterHidden): boolean {
+    return other instanceof FrontmatterHidden;
+  }
+  toDOM(): HTMLElement {
+    const el = document.createElement("span");
+    el.className = "cm-frontmatter-hidden";
+    el.style.display = "none";
+    return el;
+  }
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
 function buildDecorations(state: EditorState): DecorationSet {
   if (!state.field(livePreviewEnabled, false)) return Decoration.none;
 
   const doc = state.doc;
   const pending: Pending[] = [];
+
+  /**
+   * YAML frontmatter：顶部 `---` … `---` 之间那段。
+   *
+   * 这些键值对已经在笔记上方的「属性」面板里可视化编辑了，
+   * 正文里再显示一遍纯属重复，所以实时渲染下直接折叠成一个 0 高的块。
+   *
+   * 例外：光标移进这一段时展开（否则想手写 YAML 就没入口了）。
+   * 源码模式本来就不做任何装饰，自然能看到原文。
+   */
+  {
+    const first = doc.line(1).text.trim();
+    if (first === "---" && doc.lines > 1) {
+      let endLine = 0;
+      for (let n = 2; n <= doc.lines; n++) {
+        const t = doc.line(n).text.trim();
+        if (t === "---" || t === "...") {
+          endLine = n;
+          break;
+        }
+      }
+      if (endLine > 0) {
+        const from = doc.line(1).from;
+        const to = doc.line(endLine).to;
+        // 光标（或选区）落在 frontmatter 内 → 保持可见
+        const cursorInside = state.selection.ranges.some(
+          (r) => r.from <= to && r.to >= from,
+        );
+        if (!cursorInside) {
+          pending.push({
+            from,
+            to,
+            deco: Decoration.replace({
+              widget: new FrontmatterHidden(),
+              block: true,
+            }),
+          });
+        }
+      }
+    }
+  }
 
   /**
    * 代码块行号集合（含围栏行）。

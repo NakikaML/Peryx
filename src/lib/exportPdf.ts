@@ -16,6 +16,7 @@
  */
 
 import { renderMarkdown } from "@/lib/markdown";
+import { stripFrontmatter } from "@/lib/frontmatter";
 import { renderMermaidSvg } from "@/lib/mermaid";
 import { api } from "@/lib/api";
 import { getCachedImage, resolveImagePath } from "@/lib/imageCache";
@@ -70,7 +71,8 @@ export async function buildPrintableHtml(opts: ExportOptions): Promise<string> {
   const { title, docPath, markdown } = opts;
 
   // 1) 先把自有语法换成占位符，再渲染
-  const normalized = normalizeOwnSyntax(markdown);
+  // frontmatter 是元数据，不进 PDF 正文
+  const normalized = normalizeOwnSyntax(stripFrontmatter(markdown));
   let html = renderMarkdown(normalized.text);
 
   // 2) 图片占位符 → 内联 data URL
