@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useStore } from "@/stores/app";
 import { errText, isTauri } from "@/lib/api";
 import { TagView } from "@/components/TagView";
+import { ResourcePane } from "@/components/ResourcePane";
 import type { FileNode } from "@/lib/types";
 
 interface Props {
@@ -220,6 +221,9 @@ export function Sidebar({ onCreateNote, onCreateFolder, onCollapse, onOpenSettin
           </>
         )}
       </div>
+
+      {/* 下半部分：资料库（与笔记树隔离） */}
+      <ResourcePane />
 
       <div className="sidebar-foot">
         <button className="settings-btn" title="设置（Alt+0）" onClick={onOpenSettings}>

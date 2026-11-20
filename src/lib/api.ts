@@ -117,6 +117,15 @@ export const api = {
   /** 读取笔记库内的图片，返回 data URL（用于 ![[图片]] 内嵌显示） */
   readImageDataUrl: (relPath: string) => invoke<string>("read_image_data_url", { relPath }),
 
+  // ---- v0.3 资料库 ----
+
+  /** 列出资料库目录（非 Markdown 资料；md 留给笔记树，两边隔离） */
+  listResources: (relPath: string) => invoke<FileNode[]>("list_resources", { relPath }),
+
+  /** 读取资料文件，返回 data: URL（PDF 交给前端 pdf.js 解析） */
+  readResourceDataUrl: (relPath: string) =>
+    invoke<string>("read_resource_data_url", { relPath }),
+
   /** 读取用户设置（没有则返回 null） */
   loadSettings: () => invoke<Record<string, unknown> | null>("load_settings"),
 

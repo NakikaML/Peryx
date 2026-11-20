@@ -21,6 +21,7 @@ import { SplitPane } from "@/components/SplitPane";
 import { SplitDropZones } from "@/components/SplitDropZones";
 import { PaneModeSwitch } from "@/components/PaneModeSwitch";
 import { PropertiesPanel } from "@/components/PropertiesPanel";
+import { PdfViewer } from "@/components/PdfViewer";
 import { exportNoteAsPdf } from "@/lib/exportPdf";
 import { endTabDrag, subscribeTabDrag, zoneAt } from "@/lib/tabDrag";
 import type { SplitSide, TabDragState } from "@/lib/tabDrag";
@@ -48,6 +49,8 @@ export default function App() {
   const openInSplit = useStore((s) => s.openInSplit);
   const moveTabToSplit = useStore((s) => s.moveTabToSplit);
   const splitSide = useStore((s) => s.splitSide);
+  const resource = useStore((s) => s.resource);
+  const closeResource = useStore((s) => s.closeResource);
   /** 正在拖拽的标签（null 表示没有在拖） */
   const [tabDrag, setTabDrag] = useState<TabDragState | null>(null);
   /** 当前命中的投放方向 */
@@ -297,7 +300,13 @@ export default function App() {
             )}
           <div className="editor-wrap">
             <TabBar />
-            {imagePreview ? (
+            {resource ? (
+              <PdfViewer
+                path={resource.path}
+                title={resource.title}
+                onClose={() => closeResource()}
+              />
+            ) : imagePreview ? (
               <ImagePreview path={imagePreview} />
             ) : note ? (
               <>

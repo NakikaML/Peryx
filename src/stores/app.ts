@@ -56,6 +56,19 @@ interface AppStore {
   tabs: NoteTab[];
   /** 分屏里打开的笔记路径，null 表示未分屏 */
   splitPath: string | null;
+  // ---- v0.3 资料库 ----
+  /** 资料库根目录（相对笔记库，默认「资料库」） */
+  resourceDir: string;
+  /** 当前打开的资料文件（PDF 等），与笔记互斥 */
+  resource: { path: string; title: string } | null;
+  /** 资料库目录缓存（目录路径 → 子项） */
+  resources: Record<string, FileNode[]>;
+  /** 打开资料文件（PDF 阅读） */
+  openResource: (path: string) => void;
+  /** 关闭资料预览 */
+  closeResource: () => void;
+  /** 刷新资料库某个目录 */
+  loadResources: (relPath: string) => Promise<void>;
   /** 分屏（副面板）自己的标签页 */
   splitTabs: NoteTab[];
   /** 分屏位置：左右为横排，上下为竖排 */
@@ -175,6 +188,9 @@ export const useStore = create<AppStore>((set, get) => ({
   splitPath: null,
   splitTabs: [],
   splitSide: "right" as SplitSide,
+  resourceDir: "资料库",
+  resource: null,
+  resources: {},
   imagePreview: null,
   mode: "live",
   sidebarOpen: true,
@@ -213,6 +229,8 @@ export const useStore = create<AppStore>((set, get) => ({
       splitPath: null,
       splitTabs: [],
       splitSide: "right" as SplitSide,
+      resource: null,
+      resources: {},
       imagePreview: null,
       selectedPath: null,
       selectedIsDir: false,
@@ -508,6 +526,35 @@ export const useStore = create<AppStore>((set, get) => ({
     const cur = get().note;
     if (cur?.dirty) void get().save();
     set({ imagePreview: path, selectedPath: path, selectedIsDir: false, note: null });
+  },
+
+  // ---- v0.3 资料库 ----
+  openResource(path) {
+    const cur = get().note;
+    if (cur?.dirty) void get().save();
+    const title = path.split("/").pop() ?? path;
+    // 资料与笔记互斥：打开资料要把笔记区让出来
+    set({
+      resource: { path, title },
+      note: null,
+      imagePreview: null,
+      selectedPath: path,
+      selectedIsDir: false,
+    });
+  },
+
+  closeResource() {
+    set({ resource: null });
+  },
+
+  async loadResources(relPath) {
+    try {
+      const dir = relPath === "" ? get().resourceDir : relPath;
+      const nodes = await api.listResources(dir);
+      set({ resources: { ...get().resources, [dir]: nodes } });
+    } catch (e) {
+      get().toast(`读取资料库失败：${errText(e)}`, "error");
+    }
   },
   async openNote(path) {
     // 防御：只允许打开 .md 文件

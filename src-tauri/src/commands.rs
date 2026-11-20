@@ -456,11 +456,19 @@ fn sort_nodes(nodes: &mut [FileNode], setting: Option<&DirSort>) {
     });
 }
 
+/// 资料库目录名（相对笔记库根目录）。
+///
+/// 资料库物理上放在笔记库里面（一个文件夹），便于整体备份/移动；
+/// 但界面上与笔记树**隔离**：`list_dir` 在根目录跳过它，
+/// `list_resources` 只列其中的非 md 文件。
+pub const RESOURCE_DIR_NAME: &str = "资料库";
+
 /// 列出目录下的子项（仅目录与 `.md` 文件，隐藏项与非 md 文件忽略）。
 #[tauri::command]
 pub fn list_dir(rel_path: String, state: State<'_, AppState>) -> CmdResult<Vec<FileNode>> {
     let root = get_root(&state)?;
-    let dir = if rel_path.trim().is_empty() {
+    let is_root = rel_path.trim().is_empty();
+    let dir = if is_root {
         root.clone()
     } else {
         resolve_in_vault(&root, &rel_path)?
@@ -481,6 +489,10 @@ pub fn list_dir(rel_path: String, state: State<'_, AppState>) -> CmdResult<Vec<F
             Err(_) => continue,
         };
         let is_dir = meta.is_dir();
+        // 根目录下的资料库文件夹不进笔记树（与资料库分区隔离）
+        if is_root && is_dir && name == RESOURCE_DIR_NAME {
+            continue;
+        }
         let ext = path
             .extension()
             .map(|e| e.to_string_lossy().to_lowercase())
@@ -876,6 +888,120 @@ pub fn image_data_url_in(root: &Path, rel_path: &str) -> CmdResult<String> {
     Ok(format!("data:{mime};base64,{}", base64_encode(&bytes)))
 }
 
+/// 资料库（非 Markdown 资料）里允许列出的扩展名。
+///
+/// 这一版只保证 PDF 能读；其它格式先列出来但不保证能打开，
+/// 后面再加 docx / pptx / xlsx 的解析。
+pub const RESOURCE_EXTS: &[&str] = &[
+    "pdf", "docx", "doc", "pptx", "ppt", "xlsx", "xls", "epub", "mobi", "txt", "zip", "rar", "7z",
+];
+
+/// 单个资料文件的大小上限（PDF 阅读需要整份读到内存）
+pub const MAX_RESOURCE_BYTES: u64 = 200 * 1024 * 1024;
+
+/// 列出资料库目录（非 Markdown 文件 + 子目录）。
+///
+/// 与 `list_dir` 的区别：这里**只要非 md 资料**，并把 md 排除掉，
+/// 保证笔记库和资料库在界面上完全隔离。
+#[tauri::command]
+pub fn list_resources(rel_path: String, state: State<'_, AppState>) -> CmdResult<Vec<FileNode>> {
+    let root = get_root(&state)?;
+    list_resources_in(&root, &rel_path)
+}
+
+pub fn list_resources_in(root: &Path, rel_path: &str) -> CmdResult<Vec<FileNode>> {
+    let dir = if rel_path.trim().is_empty() {
+        root.to_path_buf()
+    } else {
+        resolve_in_vault(root, rel_path)?
+    };
+    if !dir.exists() {
+        // 资料库目录还不存在：返回空列表，由前端提示「放文件进来」
+        return Ok(Vec::new());
+    }
+    if !dir.is_dir() {
+        return Err(format!("不是目录：{rel_path}"));
+    }
+
+    let mut nodes: Vec<FileNode> = Vec::new();
+    let entries = fs::read_dir(&dir).map_err(|e| format!("读取目录失败：{e}"))?;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') {
+            continue;
+        }
+        let path = entry.path();
+        let Ok(meta) = entry.metadata() else { continue };
+        let is_dir = meta.is_dir();
+        let ext = path
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        // 目录一律列出；文件只列资料类，md 留给笔记树
+        if !is_dir && !RESOURCE_EXTS.contains(&ext.as_str()) {
+            continue;
+        }
+        nodes.push(FileNode {
+            name,
+            path: rel_to_string(path.strip_prefix(root).unwrap_or(&path)),
+            is_dir,
+            is_image: false,
+            modified_ms: if is_dir { 0 } else { modified_ms(&meta) },
+            size: if is_dir { 0 } else { meta.len() },
+        });
+    }
+
+    nodes.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => natural_cmp(&a.name, &b.name),
+    });
+    Ok(nodes)
+}
+
+/// 读取资料文件，返回 `data:` URL（PDF 由前端的 pdf.js 解析）。
+///
+/// 为什么不返回字节数组：Tauri 的 IPC 会把 `Vec<u8>` 序列化成 JSON 数字数组，
+/// 10MB 的 PDF 会变成几千万字符的文本，慢到不可用。Base64 至少小 4 倍。
+#[tauri::command]
+pub fn read_resource_data_url(
+    rel_path: String,
+    state: State<'_, AppState>,
+) -> CmdResult<String> {
+    let root = get_root(&state)?;
+    read_resource_in(&root, &rel_path)
+}
+
+pub fn read_resource_in(root: &Path, rel_path: &str) -> CmdResult<String> {
+    let p = resolve_in_vault(root, rel_path)?;
+    if !p.is_file() {
+        return Err(format!("资料不存在：{rel_path}"));
+    }
+    let ext = p
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    if !RESOURCE_EXTS.contains(&ext.as_str()) {
+        return Err(format!("不是支持的资料格式：{ext}"));
+    }
+    let meta = fs::metadata(&p).map_err(|e| format!("读取失败：{e}"))?;
+    if meta.len() > MAX_RESOURCE_BYTES {
+        return Err(format!(
+            "文件过大（{} MB），上限 {} MB：{rel_path}",
+            meta.len() / 1024 / 1024,
+            MAX_RESOURCE_BYTES / 1024 / 1024
+        ));
+    }
+    let bytes = fs::read(&p).map_err(|e| format!("读取失败：{e}"))?;
+    let mime = match ext.as_str() {
+        "pdf" => "application/pdf",
+        "txt" => "text/plain;charset=utf-8",
+        "epub" => "application/epub+zip",
+        _ => "application/octet-stream",
+    };
+    Ok(format!("data:{mime};base64,{}", base64_encode(&bytes)))
+}
+
 /// 极简 Base64 编码（避免为一张图片引入额外依赖）。
 fn base64_encode(input: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -908,6 +1034,72 @@ fn base64_encode(input: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn list_resources_only_non_markdown() {
+        let dir = std::env::temp_dir().join("peryx_res_test_1");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("a.pdf"), b"%PDF-1.4").unwrap();
+        fs::write(dir.join("b.docx"), b"x").unwrap();
+        fs::write(dir.join("c.md"), "# 笔记".as_bytes()).unwrap();
+        fs::create_dir_all(dir.join("子目录")).unwrap();
+
+        let nodes = list_resources_in(&dir, "").unwrap();
+        let names: Vec<&str> = nodes.iter().map(|n| n.name.as_str()).collect();
+        assert!(names.contains(&"a.pdf"));
+        assert!(names.contains(&"b.docx"));
+        assert!(names.contains(&"子目录"));
+        // md 属于笔记库，不该出现在资料库里
+        assert!(!names.contains(&"c.md"));
+        // 目录排前面
+        assert_eq!(names[0], "子目录");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_resources_missing_dir_is_empty() {
+        let dir = std::env::temp_dir().join("peryx_res_test_2");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        // 子目录不存在 → 返回空而不是报错
+        let nodes = list_resources_in(&dir, "不存在的资料库").unwrap();
+        assert!(nodes.is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_resource_rejects_markdown() {
+        let dir = std::env::temp_dir().join("peryx_res_test_3");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("a.md"), "# 笔记".as_bytes()).unwrap();
+        let err = read_resource_in(&dir, "a.md").unwrap_err();
+        assert!(err.contains("不是支持的资料格式"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_resource_returns_data_url() {
+        let dir = std::env::temp_dir().join("peryx_res_test_4");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("t.pdf"), b"%PDF-1.4 hello").unwrap();
+        let url = read_resource_in(&dir, "t.pdf").unwrap();
+        assert!(url.starts_with("data:application/pdf;base64,"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_resource_blocks_path_escape() {
+        let dir = std::env::temp_dir().join("peryx_res_test_5");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let err = read_resource_in(&dir, "../某个文件.pdf").unwrap_err();
+        assert!(err.contains("越界") || err.contains("非法") || err.contains("不允许"));
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn normalize_allows_plain_segments() {

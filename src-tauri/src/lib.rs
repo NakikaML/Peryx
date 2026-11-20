@@ -81,6 +81,9 @@ pub fn run() {
             commands::save_attachment,
             commands::reveal_vault,
             commands::read_image_data_url,
+            // ---- v0.3 资料库 ----
+            commands::list_resources,
+            commands::read_resource_data_url,
             commands::load_settings,
             commands::save_settings,
             // ---- v0.2 索引 / 搜索 / 双链 / 标签 ----
