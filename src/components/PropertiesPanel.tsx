@@ -40,7 +40,8 @@ const SUGGESTED_KEYS = [
 
 export function PropertiesPanel({ source, onChange }: Props) {
   const fm = useMemo(() => parseFrontmatter(source), [source]);
-  const [collapsed, setCollapsed] = useState(false);
+  // 默认折叠：属性只是参考信息，不该一上来就占掉半屏
+  const [collapsed, setCollapsed] = useState(true);
   const [adding, setAdding] = useState(false);
   const [newKey, setNewKey] = useState("");
   /** 正在编辑的列表项输入 */

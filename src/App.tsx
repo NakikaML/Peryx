@@ -339,8 +339,12 @@ export default function App() {
                     </button>
                   </div>
                 </div>
-                {/* YAML 属性面板：阅读态不显示（阅读模式只看正文） */}
-                {!loadingNote && mode !== "read" && (
+                {/*
+                  YAML 属性面板只在「编辑」（实时渲染）模式显示：
+                  - 源码模式：正文里就是 YAML 源码，不需要面板
+                  - 阅读模式：YAML 属于元数据，完全不展示
+                */}
+                {!loadingNote && mode === "live" && (
                   <PropertiesPanel
                     source={note.content}
                     onChange={(next) => {

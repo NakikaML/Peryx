@@ -88,7 +88,9 @@ async function main() {
       String(live).includes("属性笔记"),
   });
 
-  // E. 属性面板还在
+  // E. 属性面板还在（默认折叠，先展开）
+  await js(`(() => { const b = document.querySelector('.props-toggle'); if (b) b.click(); return true; })()`);
+  await sleep(500);
   const panel = await js(`(() => ({
     props: document.querySelectorAll('.prop-row').length,
     keys: Array.from(document.querySelectorAll('.prop-row')).map(r => r.dataset.propKey),
@@ -148,6 +150,14 @@ async function main() {
     pass: String(src).includes("title:") && String(src).includes("---"),
   });
 
+  // C2. 源码模式下没有属性面板（只在正文里看 YAML 源码）
+  const srcPanel = await js(`document.querySelectorAll('.props').length`);
+  results.push({
+    label: "C2. 源码模式：不显示属性面板",
+    panelCount: srcPanel,
+    pass: srcPanel === 0,
+  });
+
   // D. 阅读模式
   await js(`(() => {
     const b = document.querySelector('.note-head [data-mode="read"]');
@@ -160,6 +170,13 @@ async function main() {
     if (!v) return null;
     return { text: v.innerText.slice(0, 120) };
   })()`);
+  const readPanel = await js(`document.querySelectorAll('.props').length`);
+  results.push({
+    label: "D2. 阅读模式：不显示属性面板",
+    panelCount: readPanel,
+    pass: readPanel === 0,
+  });
+
   results.push({
     label: "D. 阅读模式：正文不含 frontmatter",
     text: reading?.text,

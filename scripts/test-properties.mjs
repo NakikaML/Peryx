@@ -79,6 +79,10 @@ async function main() {
 
   await openNote("属性笔记");
 
+  // 属性面板默认折叠，先展开
+  await js(`(() => { const b = document.querySelector('.props-toggle'); if (b) b.click(); return true; })()`);
+  await sleep(600);
+
   // A. 属性列表
   const props = await js(`(() => {
     const rows = Array.from(document.querySelectorAll('.prop-row'));
